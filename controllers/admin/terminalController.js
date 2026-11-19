@@ -1,5 +1,7 @@
 import os from 'os';
 import { PROJECT_ROOT } from '../../utils/pathHelper.js';
+import {createLogger as __createLogger} from '../../utils/logger.js';
+const _log = __createLogger('controllers/admin/terminalController');
 
 let pty;
 let isPtyAvailable = false;
@@ -13,7 +15,7 @@ try {
     }
     isPtyAvailable = true;
 } catch (error) {
-    console.warn('[Terminal] node-pty load failed, terminal feature will be disabled.', error.message);
+    _log.warn('[Terminal] node-pty load failed, terminal feature will be disabled.', error.message);
     isPtyAvailable = false;
 }
 

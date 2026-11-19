@@ -47,6 +47,12 @@ export async function getPlugins(req, reply) {
  */
 export async function savePlugins(req, reply) {
     try {
+        if (process.env.READ_ONLY_MODE === '1') {
+            return reply.code(403).send({
+                success: false,
+                error: 'READ_ONLY_MODE is enabled'
+            });
+        }
         const { plugins } = req.body;
         
         if (!Array.isArray(plugins)) {
@@ -85,6 +91,12 @@ export default plugins;
  */
 export async function restorePlugins(req, reply) {
     try {
+        if (process.env.READ_ONLY_MODE === '1') {
+            return reply.code(403).send({
+                success: false,
+                error: 'READ_ONLY_MODE is enabled'
+            });
+        }
         if (await fs.pathExists(exampleConfigPath)) {
             await fs.copy(exampleConfigPath, userConfigPath);
             return reply.send({

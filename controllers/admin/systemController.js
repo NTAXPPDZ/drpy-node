@@ -11,6 +11,8 @@ import fs from '../../utils/fsWrapper.js';
 import { isPhpAvailable, phpVersion } from '../../utils/phpEnv.js';
 import { daemon } from '../../utils/daemonManager.js';
 import { PROJECT_ROOT } from '../../utils/pathHelper.js';
+import {createLogger as __createLogger} from '../../utils/logger.js';
+const _log = __createLogger('controllers/admin/systemController');
 
 const execPromise = util.promisify(exec);
 
@@ -25,7 +27,7 @@ export async function getHealth(req, reply) {
         try {
             pythonAvailable = await daemon.isPythonAvailable();
         } catch (err) {
-            console.error('检查 Python 状态失败:', err);
+            _log.error('检查 Python 状态失败:', err);
         }
 
         return reply.send({

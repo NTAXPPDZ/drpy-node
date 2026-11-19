@@ -58,6 +58,9 @@ export const getSubFileContent = async (request, reply) => {
 
 export const saveSubFileContent = async (request, reply) => {
     const { name, content } = request.body;
+    if (process.env.READ_ONLY_MODE === '1') {
+        return reply.code(403).send({ success: false, message: 'READ_ONLY_MODE is enabled' });
+    }
     if (!name) {
         return reply.code(400).send({ success: false, message: 'Filename is required' });
     }
