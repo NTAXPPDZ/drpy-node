@@ -1,0 +1,48 @@
+name: ci
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        # 22 为 LTS 基线（.nvmrc）；20/24 用于兼容矩阵，engines 为 >=20 <25
+        node-version: [20, 22, 24]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+
+      - name: 安装依赖
+        run: npm ci --no-audit --no-fund
+
+      - name: 语法自检
+        run: npm run check:syntax
+
+      - name: 单元测试
+        run: npm run test:unit
+        env:
+          NODE_ENV: test
+
+      - name: 集成冒烟（真实启动 + 鉴权 + 健康检查 + 优雅退出）
+        run: npm run test:integration
+        env:
+          NODE_ENV: test
+
+      - name: 依赖审计（高危阻断，其余仅提示）
+        run: npm audit --omit=dev --audit-level=high
+        continue-on-error: true
