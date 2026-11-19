@@ -1,5 +1,6 @@
 import path from 'path';
-import {readdirSync, readFileSync, writeFileSync, existsSync, createReadStream} from 'fs';
+import {readdirSync, existsSync, createReadStream} from 'fs';
+import {readFile, stat as statAsync, writeFile} from 'fs/promises';
 import '../utils/marked.min.js';
 // import { marked } from "marked";
 import {computeHash} from '../utils/utils.js';
@@ -9,63 +10,132 @@ import {toBeijingTime} from "../utils/datetime-format.js"
 
 export default (fastify, options, done) => {
     // 添加 / 接口
-    fastify.get('/', {preHandler: validateBasicAuth}, async (request, reply) => {
-        let readmePath = null;
-        const indexHtmlPath = path.join(options.rootDir, 'public/index.html');
-        // console.log(`indexHtmlPath:${indexHtmlPath}`);
-        const files = readdirSync(options.rootDir);
-        // console.log(files);
-        for (const file of files) {
+    // README 渲染结果缓存：key = mtimeMs:size，避免每个请求都 readdir + 读文件 + marked 渲染 + 写盘
+    let readmeRenderCache = {key: null, html: null};
+    let readmePathCache = {dir: null, path: null, checkedAt: 0};
+
+    function resolveReadmePath() {
+        const now = Date.now();
+        if (readmePathCache.dir === options.rootDir && now - readmePathCache.checkedAt < 30_000) {
+            return readmePathCache.path;
+        }
+        let found = null;
+        for (const file of readdirSync(options.rootDir)) {
             if (/^readme\.md$/i.test(file)) {
-                readmePath = path.join(options.rootDir, file);
+                found = path.join(options.rootDir, file);
                 break;
             }
         }
+        readmePathCache = {dir: options.rootDir, path: found, checkedAt: now};
+        return found;
+    }
 
-        // 如果未找到 README.md 文件
-        if (!readmePath && !process.env.VERCEL) {
-            let fileHtml = files.map(file => `<li>${file}</li>`).join('');
+    fastify.get('/', {preHandler: validateBasicAuth}, async (request, reply) => {
+        const indexHtmlPath = path.join(options.rootDir, 'public/index.html');
+        const readmePath = resolveReadmePath();
+
+        if (!readmePath) {
+            if (process.env.VERCEL) {
+                return reply.type('text/html;charset=utf-8').send(await readFile(indexHtmlPath, 'utf-8'));
+            }
+            const fileHtml = readdirSync(options.rootDir).map((file) => `<li>${file}</li>`).join('');
             return reply.code(404).type('text/html;charset=utf-8').send(`<h1>README.md not found</h1><ul>${fileHtml}</ul>`);
-        } else if (!readmePath && process.env.VERCEL) {
-            const tmpIndexHtml = readFileSync(indexHtmlPath, 'utf-8');
-            return reply.type('text/html;charset=utf-8').send(tmpIndexHtml);
         }
 
-        // 读取 README.md 文件内容
-        const markdownContent = readFileSync(readmePath, 'utf-8');
+        const readmeStat = await statAsync(readmePath);
+        const cacheKey = `${readmeStat.mtimeMs}:${readmeStat.size}:${process.env.API_PWD || ''}`;
+        if (readmeRenderCache.key !== cacheKey || !readmeRenderCache.html) {
+            const markdownContent = await readFile(readmePath, 'utf-8');
+            const htmlContent = marked.parse(markdownContent).replaceAll('$pwd', process.env.API_PWD || '');
+            const indexHtml = [
+                '<!DOCTYPE html>',
+                '<html lang="en">',
+                '<head>',
+                '    <meta charset="UTF-8">',
+                '    <meta name="viewport" content="width=device-width, initial-scale=1.0">',
+                '    <title>drpyS-README</title>',
+                '</head>',
+                '<body>',
+                `    ${htmlContent}`,
+                '</body>',
+                '</html>',
+            ].join('\n');
+            readmeRenderCache = {key: cacheKey, html: indexHtml};
 
-        // 将 Markdown 转换为 HTML
-        const htmlContent = marked.parse(markdownContent).replaceAll('$pwd', process.env.API_PWD || '');
-        const indexHtml = `
-                <!DOCTYPE html>
-                <html lang="en">
-                <head>
-                    <meta charset="UTF-8">
-                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                    <title>drpyS-README</title>
-                </head>
-                <body>
-                    ${htmlContent}
-                </body>
-                </html>
-            `;
-        const indexHtmlHash = computeHash(indexHtml);
-        if (!existsSync(indexHtmlPath)) {
-            console.log(`将readme.md 本地文件:${indexHtmlPath}`);
-            writeFileSync(indexHtmlPath, indexHtml, 'utf8');
-        } else {
-            const tmpIndexHtml = readFileSync(indexHtmlPath, 'utf-8');
-            const tmpIndexHtmlHash = computeHash(tmpIndexHtml);
-            if (indexHtmlHash !== tmpIndexHtmlHash) {
-                console.log(`readme.md发生了改变，更新本地文件:${indexHtmlPath}`);
-                writeFileSync(indexHtmlPath, indexHtml, 'utf8');
+            // 只在内容变化时写盘，且失败不影响响应
+            const current = existsSync(indexHtmlPath) ? await readFile(indexHtmlPath, 'utf-8') : null;
+            if (current !== indexHtml) {
+                await writeFile(indexHtmlPath, indexHtml, 'utf8').catch((error) => {
+                    request.log.warn({err: error.message}, 'write public/index.html failed');
+                });
             }
         }
 
-        // 返回 HTML 内容
-        reply.type('text/html;charset=utf-8').send(indexHtml);
+        return reply.type('text/html;charset=utf-8').send(readmeRenderCache.html);
     });
+    // 轻量指标（P2-06）：文本格式，便于 curl / Prometheus textfile 采集
+    fastify.get('/metrics', {preHandler: validateBasicAuth}, async (request, reply) => {
+        const memory = process.memoryUsage();
+        const snapshot = typeof fastify.getHealthSnapshot === 'function'
+            ? fastify.getHealthSnapshot()
+            : {status: 'ready', components: {}};
+        const lines = [];
+        lines.push('# HELP drpy_up 服务是否就绪（1=ready/degraded）');
+        lines.push('# TYPE drpy_up gauge');
+        lines.push(`drpy_up ${snapshot.status === 'failed' ? 0 : 1}`);
+        lines.push('# HELP drpy_component_up 组件状态（1=up）');
+        lines.push('# TYPE drpy_component_up gauge');
+        for (const [name, component] of Object.entries(snapshot.components || {})) {
+            const state = typeof component === 'string' ? component : component && component.status;
+            lines.push(`drpy_component_up{component="${name}"} ${state === 'ready' || state === 'up' || state === 'degraded' ? 1 : 0}`);
+        }
+        lines.push('# HELP drpy_process_heap_bytes 堆内存占用');
+        lines.push('# TYPE drpy_process_heap_bytes gauge');
+        lines.push(`drpy_process_heap_bytes ${memory.heapUsed}`);
+        lines.push('# HELP drpy_process_rss_bytes 常驻内存');
+        lines.push('# TYPE drpy_process_rss_bytes gauge');
+        lines.push(`drpy_process_rss_bytes ${memory.rss}`);
+        lines.push('# HELP drpy_process_uptime_seconds 运行时长');
+        lines.push('# TYPE drpy_process_uptime_seconds gauge');
+        lines.push(`drpy_process_uptime_seconds ${Math.round(process.uptime())}`);
 
+        try {
+            const {getAllCacheStats} = await import('../utils/cache/cacheService.js');
+            const stats = getAllCacheStats();
+            lines.push('# HELP drpy_cache_entries 缓存条目数');
+            lines.push('# TYPE drpy_cache_entries gauge');
+            lines.push('# HELP drpy_cache_hits 缓存命中次数');
+            lines.push('# TYPE drpy_cache_hits counter');
+            for (const [name, item] of Object.entries(stats || {})) {
+                lines.push(`drpy_cache_entries{name="${name}"} ${item.size || 0}`);
+                lines.push(`drpy_cache_hits{name="${name}"} ${item.hits || 0}`);
+            }
+        } catch (error) {
+            request.log.debug({err: error.message}, 'cache stats unavailable');
+        }
+
+        try {
+            const {getSingleFlightStats} = await import('../utils/cache/singleFlight.js');
+            const inflight = getSingleFlightStats();
+            lines.push('# HELP drpy_singleflight_inflight 进行中的合并请求数');
+            lines.push('# TYPE drpy_singleflight_inflight gauge');
+            lines.push(`drpy_singleflight_inflight ${inflight.inflight || 0}`);
+            lines.push('# HELP drpy_singleflight_saved 被合并掉的重复请求数');
+            lines.push('# TYPE drpy_singleflight_saved counter');
+            lines.push(`drpy_singleflight_saved ${inflight.saved || 0}`);
+        } catch (error) {
+            request.log.debug({err: error.message}, 'singleflight stats unavailable');
+        }
+
+        try {
+            const {renderMetrics} = await import('../utils/runtime/metrics.js');
+            lines.push(renderMetrics().trimEnd());
+        } catch (error) {
+            request.log.debug({err: error.message}, 'request metrics unavailable');
+        }
+
+        return reply.type('text/plain; version=0.0.4; charset=utf-8').send(lines.join('\n') + '\n');
+    });
     // 新增 /robots.txt 路由
     fastify.get('/robots.txt', (request, reply) => {
         const filePath = path.join(options.rootDir, 'public', 'robots.txt');
@@ -104,9 +174,12 @@ export default (fastify, options, done) => {
                 // const port = request.socket.localPort;  // 获取当前服务的端口
                 // let requestUrl = `${protocol}://${hostname}${request.url}`;
                 let content = readFileSync(catHtmlPath, 'utf-8');
-                const validUsername = process.env.API_AUTH_NAME || 'admin';
-                const validPassword = process.env.API_AUTH_CODE || 'drpys';
-                let catLink = `${protocol}://${validUsername}:${validPassword}@${hostname}/config/index.js.md5`;
+                // 不再回退到 admin/drpys 之类历史默认口令；未配置凭据时给出不带账号信息的链接
+                const validUsername = process.env.API_AUTH_NAME;
+                const validPassword = process.env.API_AUTH_CODE;
+                let catLink = validUsername && validPassword
+                    ? `${protocol}://${encodeURIComponent(validUsername)}:${encodeURIComponent(validPassword)}@${hostname}/config/index.js.md5`
+                    : `${protocol}://${hostname}/config/index.js.md5`;
                 content = content.replace('$catLink', catLink);
                 return reply.type('text/html').send(content);
             } else {
@@ -119,14 +192,18 @@ export default (fastify, options, done) => {
 
     // 健康检查端点
     fastify.get('/health', async (request, reply) => {
-        return {
-            status: 'ok',
+        const snapshot = typeof fastify.getHealthSnapshot === 'function'
+            ? fastify.getHealthSnapshot()
+            : {status: 'ready', components: {}, degradedReasons: []};
+        const ready = snapshot.status === 'ready' || snapshot.status === 'degraded';
+        return reply.code(ready ? 200 : 503).send({
+            ...snapshot,
             timestamp: toBeijingTime(new Date()),
             python: {
                 available: await daemon.isPythonAvailable(),
                 daemon_running: daemon.isDaemonRunning()
             }
-        };
+        });
     });
     done();
 };

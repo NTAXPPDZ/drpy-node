@@ -22,7 +22,8 @@ export function createAxiosInstance(options = {}) {
     const {
         maxSockets = 64,
         timeout = 30000,
-        rejectUnauthorized = false
+        rejectUnauthorized = false,
+        lookup = undefined,
     } = options;
 
     const AgentOption = {
@@ -30,6 +31,11 @@ export function createAxiosInstance(options = {}) {
         maxSockets: maxSockets,
         timeout: timeout
     };
+
+    // 自定义 DNS 解析钩子：用于连接时做出口策略校验（抵御 DNS 重绑定）
+    if (typeof lookup === 'function') {
+        AgentOption.lookup = lookup;
+    }
 
     const httpAgent = new http.Agent(AgentOption);
 

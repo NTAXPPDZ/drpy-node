@@ -1,16 +1,27 @@
 import {readFileSync, existsSync, readdirSync, statSync, unlinkSync, mkdirSync, copyFileSync, lstatSync, writeFileSync} from 'fs';
 import {createReadStream} from 'fs';
-import {execSync} from 'child_process';
+import {spawn} from 'child_process';
+import {randomBytes} from 'crypto';
+import {secureCompare} from '../utils/security/auth.js';
+import {ApiError, sendError} from '../utils/runtime/errors.js';
 import path from 'path';
 import {fileURLToPath} from 'url';
 import {createHash} from 'crypto';
 import {ENV} from '../utils/env.js';
 import COOKIE from '../utils/cookieManager.js';
 import {validateBasicAuth} from '../utils/api_validate.js';
+import * as backupService from '../utils/backup/backupService.js';
+import {createLogger as __createLogger} from '../utils/logger.js';
+const _log = __createLogger('controllers/web');
 
-const COOKIE_AUTH_CODE = process.env.COOKIE_AUTH_CODE || 'drpys';
+// P0-01：不再内置默认口令。COOKIE_AUTH_CODE 未配置时 /admin/cookie-set 直接 503；
+// 下载签名密钥未配置时用每次启动随机生成的密钥（重启后旧链接失效，但不会出现全网可推的默认值）。
+const COOKIE_AUTH_CODE = (process.env.COOKIE_AUTH_CODE || '').trim();
 const IS_VERCEL = process.env.VERCEL;
-const DOWNLOAD_AUTH_SECRET = process.env.DOWNLOAD_AUTH_SECRET || 'drpys_download_secret';
+const DOWNLOAD_AUTH_SECRET = (process.env.DOWNLOAD_AUTH_SECRET || '').trim()
+    || randomBytes(32).toString('hex');
+const LEGACY_DEFAULT_CODES = new Set(['drpys', 'drpys_download_secret', 'CHANGE_ME_COOKIE_AUTH_CODE']);
+const COOKIE_AUTH_CONFIGURED = COOKIE_AUTH_CODE.length > 0 && !LEGACY_DEFAULT_CODES.has(COOKIE_AUTH_CODE);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -46,8 +57,8 @@ const findLatestPackage = (projectDir, packageName) => {
         const baseName = packageName.replace(/-green\.[^.]+$/, '').replace(/\.[^.]+$/, '');
         const pattern = new RegExp(`^${baseName.replace(/\./g, '\\.')}-\\d{8}${isGreen ? '-green' : ''}\\.${ext}`);
 
-        console.log(`查找包: ${packageName}, 正则: ${pattern.source}, 父目录: ${parentDir}`);
-        console.log('目录中的文件:', files.filter(f => f.includes('drpy-node')));
+        _log.info(`查找包: ${packageName}, 正则: ${pattern.source}, 父目录: ${parentDir}`);
+        _log.info('目录中的文件:', files.filter(f => f.includes('drpy-node')));
 
         const packageFiles = files
             .filter(file => pattern.test(file))
@@ -58,36 +69,76 @@ const findLatestPackage = (projectDir, packageName) => {
             })
             .sort((a, b) => b.mtime - a.mtime);
 
-        console.log('匹配到的文件:', packageFiles.map(f => f.file));
+        _log.info('匹配到的文件:', packageFiles.map(f => f.file));
         return packageFiles.length > 0 ? packageFiles[0] : null;
     } catch (error) {
-        console.error('查找包失败:', error.message);
+        _log.error('查找包失败:', error.message);
         return null;
     }
 };
 
-const buildPackage = (packageName) => {
-    try {
-        let command = 'node package.js';
-        if (packageName.includes('-green')) {
-            command += ' -g';
-        }
-        if (packageName.includes('.zip')) {
-            command += ' -z';
+/**
+ * 打包任务超时（毫秒），可用 PACKAGE_BUILD_TIMEOUT 覆盖。
+ */
+const PACKAGE_BUILD_TIMEOUT = parseInt(process.env.PACKAGE_BUILD_TIMEOUT || '180', 10) * 1000;
+
+/**
+ * 执行打包（P1-09）：参数化 spawn，不再用 execSync 拼接 shell 命令。
+ *
+ * - 不阻塞事件循环（child 独立进程，输出异步收集）；
+ * - 超时会杀掉整个子进程并抛 ApiError(TIMEOUT)；
+ * - stdout/stderr 只取尾部 4KB 用于排错，避免内存膨胀。
+ *
+ * @param {string} packageName
+ * @returns {Promise<Object|null>}
+ */
+const buildPackage = (packageName) => new Promise((resolve, reject) => {
+    const args = ['package.js'];
+    if (packageName.includes('-green')) args.push('-g');
+    if (packageName.includes('.zip')) args.push('-z');
+
+    const child = spawn(process.execPath, args, {cwd: projectRootDir, stdio: ['ignore', 'pipe', 'pipe']});
+
+    let stdout = '';
+    let stderr = '';
+    let settled = false;
+
+    const finish = (error, result) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        if (error) reject(error);
+        else resolve(result);
+    };
+
+    const timer = setTimeout(() => {
+        child.kill('SIGKILL');
+        finish(new ApiError('TIMEOUT', 'Package build timeout (' + PACKAGE_BUILD_TIMEOUT + 'ms)', 504, {expose: true}));
+    }, PACKAGE_BUILD_TIMEOUT);
+    if (timer.unref) timer.unref();
+
+    child.stdout.on('data', (chunk) => {
+        stdout = (stdout + chunk.toString()).slice(-4096);
+    });
+    child.stderr.on('data', (chunk) => {
+        stderr = (stderr + chunk.toString()).slice(-4096);
+    });
+
+    child.on('error', (error) => finish(error));
+
+    child.on('close', (code) => {
+        if (code !== 0) {
+            finish(new ApiError('UPSTREAM', 'Package build failed (exit ' + code + '): ' + (stderr || stdout).slice(-500), 500));
+            return;
         }
 
-        console.log(`执行打包命令: ${command}, 目录: ${projectRootDir}`);
-        const output = execSync(command, {cwd: projectRootDir, stdio: 'pipe'});
-        console.log('打包输出:', output.toString());
-        const result = findLatestPackage(projectRootDir, packageName);
-        console.log('打包后查找结果:', result ? result.file : '未找到');
-        return result;
-    } catch (error) {
-        console.error('打包失败:', error.message);
-        console.error('错误详情:', error.stdout?.toString(), error.stderr?.toString());
-        throw error;
-    }
-};
+        try {
+            finish(null, findLatestPackage(projectRootDir, packageName));
+        } catch (error) {
+            finish(error);
+        }
+    });
+});
 
 export default (fastify, options, done) => {
     fastify.get('/admin/encoder', async (request, reply) => {
@@ -121,8 +172,17 @@ export default (fastify, options, done) => {
                 });
             }
 
-            // 验证 cookie_auth_code 是否正确
-            if (cookie_auth_code !== COOKIE_AUTH_CODE) {
+            // P0-01：未配置 COOKIE_AUTH_CODE（或仍是历史默认值）时直接拒绝，绝不静默接受
+            if (!COOKIE_AUTH_CONFIGURED) {
+                return reply.code(503).send({
+                    success: false,
+                    message: 'COOKIE_AUTH_CODE is not configured',
+                    code: 'COOKIE_AUTH_NOT_CONFIGURED',
+                });
+            }
+
+            // 定长比较，避免时序侧信道
+            if (!secureCompare(String(cookie_auth_code), COOKIE_AUTH_CODE)) {
                 return reply.code(403).send({
                     success: false,
                     message: 'Invalid cookie_auth_code',
@@ -133,12 +193,12 @@ export default (fastify, options, done) => {
             let cookie_str = value;
 
             if (['quark_cookie', 'uc_cookie'].includes(key)) {
-                // console.log(cookie_obj);
+                // _log.info(cookie_obj);
                 cookie_str = COOKIE.stringify({
                     __pus: cookie_obj.__pus || '',
                     __puus: cookie_obj.__puus || '',
                 });
-                console.log(cookie_str);
+                _log.info(cookie_str);
             }
             // 调用 ENV.set 设置环境变量
             ENV.set(key, cookie_str);
@@ -151,7 +211,7 @@ export default (fastify, options, done) => {
             });
         } catch (error) {
             // 捕获异常并返回错误响应
-            console.error('Error setting cookie:', error.message);
+            _log.error('Error setting cookie:', error.message);
             return reply.code(500).send({
                 success: false,
                 message: 'Internal server error',
@@ -227,7 +287,7 @@ export default (fastify, options, done) => {
 
             reply.type('text/html').send(html);
         } catch (error) {
-            console.error('获取下载页面失败:', error.message);
+            _log.error('获取下载页面失败:', error.message);
             return reply.code(500).send({
                 success: false,
                 message: '获取下载页面失败',
@@ -287,8 +347,8 @@ export default (fastify, options, done) => {
             let latestPackage = findLatestPackage(projectRootDir, filename);
 
             if (!latestPackage) {
-                console.log(`未找到 ${filename}，开始打包...`);
-                latestPackage = buildPackage(filename);
+                _log.info(`未找到 ${filename}，开始打包...`);
+                latestPackage = await buildPackage(filename);
                 if (!latestPackage) {
                     return reply.code(500).send({
                         success: false,
@@ -303,7 +363,7 @@ export default (fastify, options, done) => {
             reply.header('Content-Disposition', `attachment; filename="${encodeURIComponent(latestPackage.file)}"`);
             return reply.send(fileStream);
         } catch (error) {
-            console.error('下载文件失败:', error.message);
+            _log.error('下载文件失败:', error.message);
             return reply.code(500).send({
                 success: false,
                 message: '下载失败',
@@ -339,7 +399,7 @@ export default (fastify, options, done) => {
                         deletedFiles.push(file);
                         deletedCount++;
                     } catch (error) {
-                        console.error(`删除文件失败: ${file}`, error.message);
+                        _log.error(`删除文件失败: ${file}`, error.message);
                     }
                 }
             }
@@ -351,7 +411,7 @@ export default (fastify, options, done) => {
                 message: `已清除 ${deletedCount} 个历史文件`
             });
         } catch (error) {
-            console.error('清除历史文件失败:', error.message);
+            _log.error('清除历史文件失败:', error.message);
             return reply.code(500).send({
                 success: false,
                 message: '清除历史文件失败',
@@ -360,89 +420,14 @@ export default (fastify, options, done) => {
         }
     });
 
-    const BACKUP_PATHS = [
-        '.env',
-        '.plugins.js',
-        'config/env.json',
-        'config/map.txt',
-        'config/parses.conf',
-        'config/player.json',
-        'scripts/cron',
-        'plugins'
-    ];
-
-    const BACKINFO_FILENAME = '.backinfo';
-
-    const getBackupRootDir = () => {
-        return path.join(path.dirname(projectRootDir), path.basename(projectRootDir) + '-backup');
-    };
-
-    const getBackinfoPath = (backupDir) => {
-        return path.join(backupDir, BACKINFO_FILENAME);
-    };
-
-    const loadBackinfo = (backupDir) => {
-        const infoPath = getBackinfoPath(backupDir);
-        if (!existsSync(infoPath)) {
-            return null;
-        }
-        try {
-            const content = readFileSync(infoPath, 'utf-8');
-            return JSON.parse(content);
-        } catch (e) {
-            return null;
-        }
-    };
-
-    const saveBackinfo = (backupDir, data) => {
-        const infoPath = getBackinfoPath(backupDir);
-        writeFileSync(infoPath, JSON.stringify(data, null, 2), 'utf-8');
-    };
-
-    const getEffectiveBackupPaths = (backupDir) => {
-        const info = loadBackinfo(backupDir);
-        if (info && Array.isArray(info.paths) && info.paths.length > 0) {
-            return {paths: info.paths, info};
-        }
-        return {paths: BACKUP_PATHS, info};
-    };
-
-    const copyRecursiveSync = (src, dest) => {
-        const stats = lstatSync(src);
-        if (stats.isDirectory()) {
-            if (!existsSync(dest)) {
-                mkdirSync(dest, { recursive: true });
-            }
-            readdirSync(src).forEach((childItemName) => {
-                copyRecursiveSync(path.join(src, childItemName), path.join(dest, childItemName));
-            });
-        } else {
-            const destDir = path.dirname(dest);
-            if (!existsSync(destDir)) {
-                mkdirSync(destDir, { recursive: true });
-            }
-            copyFileSync(src, dest);
-        }
-    };
+    // 备份/恢复逻辑统一在 utils/backup/backupService.js（P2-02）；此处仅做路由适配与中文响应文案。
+    const {BackupError} = backupService;
 
     fastify.get('/admin/backup/config', {
         preHandler: validateBasicAuth
     }, async (request, reply) => {
-        const backupDir = getBackupRootDir();
-        let paths;
-        let lastBackupAt = null;
-        let lastRestoreAt = null;
-        if (!existsSync(backupDir)) {
-            paths = BACKUP_PATHS;
-        } else {
-            const result = getEffectiveBackupPaths(backupDir);
-            paths = result.paths;
-            if (result.info) {
-                lastBackupAt = result.info.lastBackupAt || null;
-                lastRestoreAt = result.info.lastRestoreAt || null;
-            }
-        }
-        return reply.send({success: true, paths, lastBackupAt, lastRestoreAt});
+        const data = await backupService.getBackupConfig();
+        return reply.send({success: true, ...data});
     });
 
     fastify.post('/admin/backup', {
@@ -452,35 +437,8 @@ export default (fastify, options, done) => {
             return reply.code(403).send({ success: false, message: 'Vercel环境不支持备份' });
         }
         try {
-            const backupDir = getBackupRootDir();
-            if (!existsSync(backupDir)) {
-                mkdirSync(backupDir, { recursive: true });
-            }
-
-            const {paths, info} = getEffectiveBackupPaths(backupDir);
-            const details = [];
-            for (const item of paths) {
-                const srcPath = path.join(projectRootDir, item);
-                const destPath = path.join(backupDir, item);
-                
-                if (existsSync(srcPath)) {
-                    copyRecursiveSync(srcPath, destPath);
-                    details.push(`Backed up: ${item}`);
-                } else {
-                    details.push(`Skipped (not found): ${item}`);
-                }
-            }
-
-            const now = new Date().toISOString();
-            const customPaths = info && Array.isArray(info.paths) && info.paths.length > 0 ? info.paths : [];
-            const backinfoData = {
-                paths: customPaths,
-                lastBackupAt: now,
-                lastRestoreAt: info && info.lastRestoreAt ? info.lastRestoreAt : null
-            };
-            saveBackinfo(backupDir, backinfoData);
-
-            return reply.send({ success: true, message: '备份完成', backupDir, details });
+            const result = await backupService.createBackup();
+            return reply.send({ success: true, message: '备份完成', ...result });
         } catch (error) {
             fastify.log.error(`Backup failed: ${error.message}`);
             return reply.code(500).send({ success: false, message: '备份失败: ' + error.message });
@@ -494,36 +452,12 @@ export default (fastify, options, done) => {
             return reply.code(403).send({ success: false, message: 'Vercel环境不支持恢复' });
         }
         try {
-            const backupDir = getBackupRootDir();
-            if (!existsSync(backupDir)) {
+            const result = await backupService.restoreBackup();
+            return reply.send({ success: true, message: '恢复完成', ...result });
+        } catch (error) {
+            if (error instanceof BackupError && error.code === 'BACKUP_NOT_FOUND') {
                 return reply.code(404).send({ success: false, message: '备份目录不存在' });
             }
-
-            const {paths, info} = getEffectiveBackupPaths(backupDir);
-            const details = [];
-            for (const item of paths) {
-                const srcPath = path.join(backupDir, item);
-                const destPath = path.join(projectRootDir, item);
-                
-                if (existsSync(srcPath)) {
-                    copyRecursiveSync(srcPath, destPath);
-                    details.push(`Restored: ${item}`);
-                } else {
-                    details.push(`Skipped (not found in backup): ${item}`);
-                }
-            }
-
-            const now = new Date().toISOString();
-            const customPaths = info && Array.isArray(info.paths) && info.paths.length > 0 ? info.paths : [];
-            const backinfoData = {
-                paths: customPaths,
-                lastBackupAt: info && info.lastBackupAt ? info.lastBackupAt : null,
-                lastRestoreAt: now
-            };
-            saveBackinfo(backupDir, backinfoData);
-
-            return reply.send({ success: true, message: '恢复完成', backupDir, details });
-        } catch (error) {
             fastify.log.error(`Restore failed: ${error.message}`);
             return reply.code(500).send({ success: false, message: '恢复失败: ' + error.message });
         }

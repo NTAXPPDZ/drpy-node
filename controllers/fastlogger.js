@@ -5,6 +5,8 @@ import Fastify from "fastify";
 import {fileURLToPath} from 'url';
 import {createStream} from 'rotating-file-stream';
 import dotenv from 'dotenv';
+import {createLogger as __createLogger} from '../utils/logger.js';
+const _log = __createLogger('controllers/fastlogger');
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -12,13 +14,58 @@ const __dirname = path.dirname(__filename);
 // 使用 Symbol 作为全局键，防止命名冲突
 const FASTIFY_INSTANCE_KEY = Symbol.for('drpy-node.fastify.instances');
 
+// 日志统一脱敏：不打印凭据类字段（对应项目书 P0-04）
+const REDACT_PATHS = [
+    'req.headers.authorization',
+    'req.headers.cookie',
+    'req.headers["x-api-key"]',
+    'req.headers["sec-websocket-protocol"]',
+    'res.headers["set-cookie"]',
+    'headers.authorization',
+    'headers.cookie',
+    'authorization',
+    'cookie',
+    'password',
+    'token',
+    'secret',
+    'pwd',
+    'apiKey',
+    'api_key',
+];
+
+const PIN_OPTIONS = {
+    serializers: {
+        req: pino.stdSerializers.req,
+        res: pino.stdSerializers.res,
+    },
+    redact: {paths: REDACT_PATHS, censor: '[REDACTED]'},
+};
+
+/**
+ * CORS 来源白名单：CORS_ALLOWED_ORIGINS 逗号分隔；未配置时不回通配、不允许跨域带凭据
+ */
+function getAllowedOrigins() {
+    return String(process.env.CORS_ALLOWED_ORIGINS || '')
+        .split(',')
+        .map(item => item.trim())
+        .filter(Boolean);
+}
+
+function resolveCorsOrigin(origin) {
+    if (!origin) return null;
+    const allowed = getAllowedOrigins();
+    if (allowed.length === 0) return null;
+    if (allowed.includes('*')) return origin;
+    return allowed.includes(origin) ? origin : null;
+}
+
 // 初始化函数，仅执行一次
 function initializeFastify() {
     if (globalThis[FASTIFY_INSTANCE_KEY]) {
         return globalThis[FASTIFY_INSTANCE_KEY];
     }
 
-    dotenv.config();
+    dotenv.config({path: process.env.DOTENV_CONFIG_PATH || undefined});
 
     const LOG_WITH_FILE = Number(process.env.LOG_WITH_FILE) || 0;
     const LOG_LEVEL = process.env.LOG_LEVEL && ['trace', 'debug', 'info', 'warn', 'error', 'fatal'].includes(process.env.LOG_LEVEL) ? process.env.LOG_LEVEL : 'info';
@@ -45,7 +92,7 @@ function initializeFastify() {
             try {
                 fs.mkdirSync(logDirectory, {recursive: true});
             } catch (e) {
-                console.error('[FastLogger] Failed to create log directory:', e);
+                _log.error('[FastLogger] Failed to create log directory:', e);
             }
         }
 
@@ -60,38 +107,33 @@ function initializeFastify() {
         try {
             logStream = createStream(safeFileNameGenerator, streamOptions);
             logStream.on('error', (err) => {
-                // console.error('日志流错误:', err);
+                // _log.error('日志流错误:', err);
             });
             logStream.on('rotated', (filename) => {
-                console.log('日志轮转完成:', filename);
+                _log.info('日志轮转完成:', filename);
             });
 
             _logger = pino({
                 level: LOG_LEVEL,
-                serializers: {
-                    req: pino.stdSerializers.req,
-                    res: pino.stdSerializers.res,
-                },
+                ...PIN_OPTIONS,
                 timestamp: customTimestamp,
             }, logStream);
-            console.log('日志输出到文件');
+            _log.info('日志输出到文件');
         } catch (error) {
-            console.error('[FastLogger] Failed to initialize file logger, falling back to console:', error);
+            _log.error('[FastLogger] Failed to initialize file logger, falling back to console:', error);
             _logger = pino({
                 level: LOG_LEVEL,
+                ...PIN_OPTIONS,
                 timestamp: customTimestamp,
             });
         }
     } else {
         _logger = pino({
             level: LOG_LEVEL,
-            serializers: {
-                req: pino.stdSerializers.req,
-                res: pino.stdSerializers.res,
-            },
+            ...PIN_OPTIONS,
             timestamp: customTimestamp,
         });
-        console.log('日志输出到控制台');
+        _log.info('日志输出到控制台');
     }
 
     const _fastify = Fastify({
@@ -102,16 +144,22 @@ function initializeFastify() {
         logger: _logger,
     });
 
-    // 添加CORS支持的钩子
+    // CORS：只对白名单来源回显，且不再使用「通配 + 允许凭据」的非法组合
     [_fastify, _wsApp].forEach(server => {
         server.addHook('onRequest', async (request, reply) => {
-            reply.header('Access-Control-Allow-Origin', '*');
-            reply.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-            reply.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
-            reply.header('Access-Control-Allow-Credentials', 'true');
+            const origin = request.headers.origin;
+            const allowedOrigin = resolveCorsOrigin(origin);
+            if (allowedOrigin) {
+                reply.header('Access-Control-Allow-Origin', allowedOrigin);
+                reply.header('Vary', 'Origin');
+                reply.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+                reply.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, X-Request-Id');
+                reply.header('Access-Control-Allow-Credentials', 'true');
+                reply.header('Access-Control-Max-Age', '600');
+            }
 
             if (request.method === 'OPTIONS') {
-                reply.status(200).send();
+                reply.status(allowedOrigin ? 204 : 403).send();
                 return;
             }
         });
@@ -181,7 +229,7 @@ export const wsApp = wsAppInstance;
 //                 logDirectory: path.resolve(logDirectory)
 //             });
 //         } catch (err) {
-//             console.error('轮转过程中出错:', err);
+//             _log.error('轮转过程中出错:', err);
 //             reply.status(500).send({
 //                 status: 'error',
 //                 message: '轮转失败',
@@ -190,5 +238,5 @@ export const wsApp = wsAppInstance;
 //         }
 //     });
 //
-//     console.log('测试端点已注册: GET /test-rotate');
+//     _log.info('测试端点已注册: GET /test-rotate');
 // }

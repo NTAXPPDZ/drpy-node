@@ -4,6 +4,8 @@ import path from "path";
 import {spawn} from "child_process";
 import {fileURLToPath, pathToFileURL} from "url";
 import {ensureExecutable} from "./binHelper.js";
+import {createLogger as __createLogger} from './logger.js';
+const _log = __createLogger('utils/pluginManager');
 
 // 获取 pluginManager.js 的目录
 const __filename = fileURLToPath(import.meta.url);
@@ -16,16 +18,16 @@ const exampleConfigPath = path.join(__dirname, "../.plugins.example.js");
 // 尝试加载用户配置，如果没有就用 example
 let plugins = [];
 try {
-    // console.log(`检查插件配置文件: ${userConfigPath} 是否存在`);
+    // _log.info(`检查插件配置文件: ${userConfigPath} 是否存在`);
     if (fs.existsSync(userConfigPath)) {
         plugins = (await import(pathToFileURL(userConfigPath).href)).default;
-        console.log("[pluginManager] 使用用户 .plugins.js 配置");
+        _log.info("[pluginManager] 使用用户 .plugins.js 配置");
     } else if (fs.existsSync(exampleConfigPath)) {
         plugins = (await import(pathToFileURL(exampleConfigPath).href)).default;
-        console.log("[pluginManager] 使用默认 .plugins.example.js 配置");
+        _log.info("[pluginManager] 使用默认 .plugins.example.js 配置");
     }
 } catch (err) {
-    console.error("[pluginManager] 加载插件配置失败:", err);
+    _log.error("[pluginManager] 加载插件配置失败:", err);
     plugins = [];
 }
 
@@ -49,7 +51,7 @@ function getPluginBinary(rootDir, pluginPath, pluginName) {
     } else if (platform === "android") {
         binaryName = `${pluginName}-android`;
     } else {
-        console.log("[getPluginBinary] Unsupported platform: " + platform);
+        _log.info("[getPluginBinary] Unsupported platform: " + platform);
         return null;
     }
 
@@ -70,11 +72,11 @@ function startPlugin(plugin, rootDir) {
 
     const binary = getPluginBinary(rootDir, plugin.path, plugin.name);
     if (!binary || !fs.existsSync(binary)) {
-        console.error(`[pluginManager] 插件 ${plugin.name} 的二进制文件不存在: ${binary}`);
+        _log.error(`[pluginManager] 插件 ${plugin.name} 的二进制文件不存在: ${binary}`);
         return null;
     }
 
-    console.log(`[pluginManager] 启动插件 ${plugin.name}: ${binary} ${plugin.params || ""}`);
+    _log.info(`[pluginManager] 启动插件 ${plugin.name}: ${binary} ${plugin.params || ""}`);
 
     const args = plugin.params ? plugin.params.split(" ") : [];
     let proc;
@@ -86,25 +88,25 @@ function startPlugin(plugin, rootDir) {
 
         // 检查是否真的启动了
         if (!proc || !proc.pid) {
-            console.error(`[pluginManager] 插件 ${plugin.name} 启动失败 (无效的进程 PID)`);
+            _log.error(`[pluginManager] 插件 ${plugin.name} 启动失败 (无效的进程 PID)`);
             return null;
         }
 
         proc.stdout.on("data", (data) => {
-            console.log(`[${plugin.name}]`, data.toString().trim());
+            _log.info(`[${plugin.name}]`, data.toString().trim());
         });
 
         proc.stderr.on("data", (data) => {
-            console.log(`[${plugin.name}-STD]`, data.toString().trim());
+            _log.info(`[${plugin.name}-STD]`, data.toString().trim());
         });
 
         proc.on("error", (err) => {
             if (err.code === "EACCES") {
-                console.error(`[pluginManager] 插件 ${plugin.name} 无法执行: 没有执行权限，请运行: chmod +x ${binary}`);
+                _log.error(`[pluginManager] 插件 ${plugin.name} 无法执行: 没有执行权限，请运行: chmod +x ${binary}`);
             } else if (err.code === "ENOENT") {
-                console.error(`[pluginManager] 插件 ${plugin.name} 启动失败: 找不到可执行文件 ${binary}`);
+                _log.error(`[pluginManager] 插件 ${plugin.name} 启动失败: 找不到可执行文件 ${binary}`);
             } else {
-                console.error(`[pluginManager] 插件 ${plugin.name} 运行中出错:`, err.message);
+                _log.error(`[pluginManager] 插件 ${plugin.name} 运行中出错:`, err.message);
             }
             // 标记为“启动失败”，避免 exit 再重复打印
             proc._failedToSpawn = true;
@@ -112,12 +114,12 @@ function startPlugin(plugin, rootDir) {
 
         proc.on("exit", (code, signal) => {
             if (proc._failedToSpawn) return; // 忽略 spawn 失败导致的 exit
-            console.log(`[pluginManager] 插件 ${plugin.name} 退出 (code=${code}, signal=${signal})`);
+            _log.info(`[pluginManager] 插件 ${plugin.name} 退出 (code=${code}, signal=${signal})`);
         });
 
         return proc;
     } catch (err) {
-        console.error(`[pluginManager] 插件 ${plugin.name} 启动失败 (spawn 出错):`, err.message);
+        _log.error(`[pluginManager] 插件 ${plugin.name} 启动失败 (spawn 出错):`, err.message);
         return null;
     }
 }
@@ -137,7 +139,7 @@ function getProcessKey(plugin, index) {
  * @param {string} rootDir 项目根目录
  */
 export function startAllPlugins(rootDir = PROJECT_ROOT) {
-    console.log("[pluginManager] 准备启动所有插件...");
+    _log.info("[pluginManager] 准备启动所有插件...");
     const processes = {};
     const inactivePlugins = [];
     
@@ -154,15 +156,19 @@ export function startAllPlugins(rootDir = PROJECT_ROOT) {
 
         if (proc) {
             processes[key] = proc;
-            console.log(`[pluginManager] 插件已启动并注册进程: ${key} (pid=${proc.pid})`);
+            _log.info(`[pluginManager] 插件已启动并注册进程: ${key} (pid=${proc.pid})`);
+            recordPluginStatus(key, {pid: proc.pid, running: true, startedAt: Date.now()});
+            proc.once('exit', (code, signal) => {
+                recordPluginStatus(key, {running: false, exitCode: code, signal, stoppedAt: Date.now()});
+            });
         } else {
-            console.error(`[pluginManager] 插件 ${key} 启动失败，未加入到 processes`);
+            _log.error(`[pluginManager] 插件 ${key} 启动失败，未加入到 processes`);
         }
     });
     
     // 如果有未激活的插件，在一行中显示
     if (inactivePlugins.length > 0) {
-        console.log(`[pluginManager] 跳过未激活的插件: [${inactivePlugins.map(name => `'${name}'`).join(',')}]`);
+        _log.info(`[pluginManager] 跳过未激活的插件: [${inactivePlugins.map(name => `'${name}'`).join(',')}]`);
     }
     
     return processes;
@@ -176,15 +182,115 @@ export function startAllPlugins(rootDir = PROJECT_ROOT) {
 export function stopPlugin(processes, key) {
     const proc = processes[key];
     if (!proc) {
-        console.warn(`[pluginManager] 未找到插件进程: ${key}`);
+        _log.warn(`[pluginManager] 未找到插件进程: ${key}`);
         return;
     }
 
-    console.log(`[pluginManager] 停止插件: ${key} (pid=${proc.pid})`);
+    _log.info(`[pluginManager] 停止插件: ${key} (pid=${proc.pid})`);
     try {
         proc.kill("SIGTERM");
         delete processes[key];
     } catch (err) {
-        console.error(`[pluginManager] 停止插件 ${key} 失败:`, err);
+        _log.error(`[pluginManager] 停止插件 ${key} 失败:`, err);
     }
+}
+
+// ===== 运行时状态与优雅停止（P1-05）=====
+
+const pluginStatus = new Map();
+
+function recordPluginStatus(key, patch) {
+    const previous = pluginStatus.get(key) || {key, restarts: 0};
+    pluginStatus.set(key, {...previous, ...patch});
+}
+
+/**
+ * 插件运行状态快照，供 /health 与后台展示使用。
+ */
+export function getPluginStatus() {
+    return Array.from(pluginStatus.values()).map((item) => ({...item}));
+}
+
+/**
+ * 汇总快照：配置数、激活数、运行中数量与明细。
+ */
+export function getPluginRuntimeSnapshot() {
+    const items = getPluginStatus();
+    return {
+        total: plugins.length,
+        configured: plugins.filter((plugin) => plugin.active).length,
+        running: items.filter((item) => item.running).length,
+        items,
+    };
+}
+
+/**
+ * 停止所有插件进程：先 SIGTERM，超时未退出再 SIGKILL。
+ * @param {Object} processes 插件进程字典
+ * @param {{timeoutMs?: number}} [options]
+ * @returns {Promise<Array<{key: string, stopped: boolean}>>}
+ */
+export async function stopAllPlugins(processes, {timeoutMs = 3000} = {}) {
+    const entries = Object.entries(processes || {});
+    if (entries.length === 0) return [];
+    return Promise.all(entries.map(([key, proc]) => new Promise((resolve) => {
+        if (!proc || typeof proc.kill !== 'function' || proc.exitCode !== null || proc.signalCode) {
+            delete processes[key];
+            recordPluginStatus(key, {running: false, stoppedAt: Date.now()});
+            resolve({key, stopped: true, alreadyExited: true});
+            return;
+        }
+        let settled = false;
+        const finish = (result) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            delete processes[key];
+            recordPluginStatus(key, {running: false, stoppedAt: Date.now()});
+            resolve(result);
+        };
+        const timer = setTimeout(() => {
+            try {
+                proc.kill('SIGKILL');
+            } catch {
+                // 进程可能已退出
+            }
+            finish({key, stopped: false, escalated: true});
+        }, Math.max(100, timeoutMs));
+        if (typeof timer.unref === 'function') timer.unref();
+        proc.once('exit', () => finish({key, stopped: true}));
+        try {
+            proc.kill('SIGTERM');
+        } catch (error) {
+            finish({key, stopped: false, error: error.message});
+        }
+    })));
+}
+
+/**
+ * 重启单个插件：指数退避（1s/2s/4s… 上限 30s），默认最多 3 次，避免崩溃-重启风暴。
+ */
+export async function restartPlugin(processes, key, rootDir = PROJECT_ROOT, {attempt = 1, maxAttempts = 3} = {}) {
+    const index = plugins.findIndex((plugin, i) => getProcessKey(plugin, i) === key);
+    if (index === -1) throw new Error(`未找到插件配置: ${key}`);
+    await stopAllPlugins({[key]: processes[key]});
+    const backoff = Math.min(30000, 1000 * 2 ** Math.max(0, attempt - 1));
+    await new Promise((resolve) => {
+        const timer = setTimeout(resolve, backoff);
+        if (typeof timer.unref === 'function') timer.unref();
+    });
+    const proc = startPlugin(plugins[index], rootDir);
+    if (!proc) {
+        recordPluginStatus(key, {running: false, lastError: 'restart-failed'});
+        if (attempt < maxAttempts) return restartPlugin(processes, key, rootDir, {attempt: attempt + 1, maxAttempts});
+        return null;
+    }
+    processes[key] = proc;
+    recordPluginStatus(key, {
+        pid: proc.pid,
+        running: true,
+        startedAt: Date.now(),
+        restarts: (pluginStatus.get(key)?.restarts || 0) + 1,
+    });
+    return proc;
 }

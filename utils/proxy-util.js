@@ -8,6 +8,20 @@ import {ENV} from './env.js';
 import https from 'https';
 import http from 'http';
 import {URL} from 'url';
+import {guardedLookup} from './security/egressPolicy.js';
+import {CacheService} from './cache/cacheService.js';
+import {createLogger as __createLogger} from './logger.js';
+const _log = __createLogger('utils/proxy-util');
+
+// 连接时代理出口校验：解析到的任一地址落在内网/回环/元数据段都会拒绝
+/**
+ * 播放链路出口模式：
+ *  - strict   禁止内网/保留/回环（最严）
+ *  - metadata 禁止元数据+回环，允许内网（webdav/ftp 局域网）
+ *  - lan      仅禁止元数据（默认，兼容本地播放代理/自建媒体源）
+ */
+export const PLAYBACK_EGRESS_MODE = process.env.PROXY_EGRESS_MODE || 'lan';
+const EGRESS_LOOKUP = guardedLookup({mode: PLAYBACK_EGRESS_MODE});
 
 /**
  * 代理相关常量
@@ -46,276 +60,140 @@ export const PROXY_CONSTANTS = {
  * 智能缓存管理器
  * 提供LRU淘汰、自动过期、内存监控等功能，防止内存泄漏
  */
+/**
+ * 缓存管理器（兼容旧 API 的薄适配层，对应项目书 P1-02）
+ *
+ * 实际存储交给 utils/cache/cacheService.js：
+ * - 只剩一份有序结构（lru-cache），不再 cache + accessOrder 双 Map 重复持有 key；
+ * - 条目数与字节数双上限，TTL 统一由 lru-cache 处理；
+ * - 不再每个实例注册 process.on('exit') 监听器（定时器 unref，可正常退出）。
+ */
 export class SmartCacheManager {
     constructor(options = {}) {
-        this.maxSize = options.maxSize || PROXY_CONSTANTS.CACHE_MANAGER.DEFAULT_MAX_SIZE;
-        this.defaultTTL = options.defaultTTL || PROXY_CONSTANTS.CACHE_MANAGER.DEFAULT_TTL;
-        this.cleanupInterval = options.cleanupInterval || PROXY_CONSTANTS.CACHE_MANAGER.CLEANUP_INTERVAL;
+        const config = PROXY_CONSTANTS.CACHE_MANAGER;
+        const maxEntries = Number(options.maxSize) > 0 ? Number(options.maxSize) : config.DEFAULT_MAX_SIZE;
+        const ttl = Number(options.defaultTTL) > 0 ? Number(options.defaultTTL) : config.DEFAULT_TTL;
+        const cleanupInterval = Number.isFinite(options.cleanupInterval) ? Number(options.cleanupInterval) : 0;
+
         this.name = options.name || 'SmartCache';
-        
-        // 缓存存储：key -> {value, timestamp, accessTime, ttl}
-        this.cache = new Map();
-        // 访问顺序链表（用于LRU）
-        this.accessOrder = new Map();
-        
-        // 统计信息
-        this.stats = {
-            hits: 0,
-            misses: 0,
-            evictions: 0,
-            expirations: 0,
-            cleanups: 0
-        };
-        
-        // 启动定期清理任务
-        this.startCleanupTimer();
-        
-        // console.log(`[${this.name}] SmartCacheManager initialized: maxSize=${this.maxSize}, defaultTTL=${this.defaultTTL}ms`);
+        this.maxSize = maxEntries;
+        this.defaultTTL = ttl;
+        this.cleanupInterval = cleanupInterval;
+
+        this._service = new CacheService({
+            namespace: this.name,
+            max: maxEntries,
+            maxSize: Number(options.maxBytes) > 0 ? Number(options.maxBytes) : undefined,
+            ttl,
+            cleanupInterval,
+        });
     }
-    
+
     /**
      * 设置缓存项
-     * @param {string} key - 缓存键
-     * @param {*} value - 缓存值
-     * @param {number} ttl - 过期时间（毫秒），可选
+     * @param {string} key
+     * @param {*} value
+     * @param {number|null} [ttl] 毫秒
+     * @returns {boolean}
      */
     set(key, value, ttl = null) {
-        const now = Date.now();
-        const itemTTL = ttl || this.defaultTTL;
-        
-        // 如果已存在，先删除旧的
-        if (this.cache.has(key)) {
-            this.accessOrder.delete(key);
-        }
-        
-        // 检查是否需要淘汰
-        this._evictIfNeeded();
-        
-        // 添加新项
-        const item = {
-            value,
-            timestamp: now,
-            accessTime: now,
-            ttl: itemTTL,
-            expiresAt: now + itemTTL
-        };
-        
-        this.cache.set(key, item);
-        this.accessOrder.set(key, now);
-        
-        // 内存压力检查
-        if (this.cache.size > PROXY_CONSTANTS.CACHE_MANAGER.MEMORY_PRESSURE_THRESHOLD) {
-            console.warn(`[${this.name}] Memory pressure detected: ${this.cache.size} items, triggering aggressive cleanup`);
-            this._aggressiveCleanup();
-        }
+        return this._service.set(key, value, ttl);
     }
-    
+
     /**
      * 获取缓存项
-     * @param {string} key - 缓存键
-     * @returns {*} 缓存值，如果不存在或已过期返回null
+     * @param {string} key
+     * @returns {*} 未命中返回 null
      */
     get(key) {
-        const item = this.cache.get(key);
-        
-        if (!item) {
-            this.stats.misses++;
-            return null;
-        }
-        
-        const now = Date.now();
-        
-        // 检查是否过期
-        if (now > item.expiresAt) {
-            this.cache.delete(key);
-            this.accessOrder.delete(key);
-            this.stats.misses++;
-            this.stats.expirations++;
-            return null;
-        }
-        
-        // 更新访问时间（LRU）
-        item.accessTime = now;
-        this.accessOrder.delete(key);
-        this.accessOrder.set(key, now);
-        
-        this.stats.hits++;
-        return item.value;
+        return this._service.get(key);
     }
-    
+
     /**
-     * 检查缓存项是否存在且未过期
-     * @param {string} key - 缓存键
+     * 是否存在且未过期
+     * @param {string} key
      * @returns {boolean}
      */
     has(key) {
-        return this.get(key) !== null;
+        return this._service.has(key);
     }
-    
+
     /**
      * 删除缓存项
-     * @param {string} key - 缓存键
-     * @returns {boolean} 是否成功删除
+     * @param {string} key
+     * @returns {boolean}
      */
     delete(key) {
-        const deleted = this.cache.delete(key);
-        if (deleted) {
-            this.accessOrder.delete(key);
-        }
-        return deleted;
+        return this._service.delete(key);
     }
-    
+
     /**
-     * 清空所有缓存
+     * 清空缓存
+     * @returns {void}
      */
     clear() {
-        const size = this.cache.size;
-        this.cache.clear();
-        this.accessOrder.clear();
-        console.log(`[${this.name}] Cache cleared: ${size} items removed`);
+        this._service.clear();
     }
-    
-    /**
-     * 获取缓存大小
-     * @returns {number}
-     */
+
+    /** 当前条目数 */
     get size() {
-        return this.cache.size;
+        return this._service.size;
     }
-    
+
     /**
-     * 获取统计信息
+     * 统计信息
      * @returns {Object}
      */
     getStats() {
-        const hitRate = this.stats.hits + this.stats.misses > 0 
-            ? (this.stats.hits / (this.stats.hits + this.stats.misses) * 100).toFixed(2)
-            : '0.00';
-            
-        return {
-            hits: this.stats.hits,
-            misses: this.stats.misses,
-            evictions: this.stats.evictions,
-            expirations: this.stats.expirations,
-            cleanups: this.stats.cleanups,
-            size: this.cache.size,
-            maxSize: this.maxSize,
-            hitRate: `${hitRate}%`,
-            memoryUsage: this._estimateMemoryUsage(),
-            name: this.name,
-            defaultTTL: this.defaultTTL,
-            cleanupInterval: this.cleanupInterval
-        };
+        return this._service.getStats();
     }
-    
+
     /**
-     * 启动定期清理任务
+     * 启动定期清理
+     * @returns {void}
      */
     startCleanupTimer() {
-        if (this.cleanupTimer) {
-            clearInterval(this.cleanupTimer);
-        }
-        
-        this.cleanupTimer = setInterval(() => {
-            this._performCleanup();
-        }, this.cleanupInterval);
-        
-        // 允许进程在定时器存在时退出
-        if (this.cleanupTimer.unref) {
-            this.cleanupTimer.unref();
-        }
-        
-        // 确保进程退出时清理定时器
-        if (typeof process !== 'undefined') {
-            process.on('exit', () => this.stopCleanupTimer());
-        }
+        this._service.startCleanupTimer();
     }
-    
+
     /**
-     * 停止定期清理任务
+     * 停止定期清理
+     * @returns {void}
      */
     stopCleanupTimer() {
-        if (this.cleanupTimer) {
-            clearInterval(this.cleanupTimer);
-            this.cleanupTimer = null;
-        }
+        this._service.stopCleanupTimer();
     }
-    
+
     /**
-     * 执行清理任务
+     * 立即清理过期项
+     * @returns {number} 清理数量
      */
     _performCleanup() {
-        const before = this.cache.size;
-        const now = Date.now();
-        let expiredCount = 0;
-        
-        // 清理过期项
-        for (const [key, item] of this.cache.entries()) {
-            if (now > item.expiresAt) {
-                this.cache.delete(key);
-                this.accessOrder.delete(key);
-                expiredCount++;
-            }
-        }
-        
-        if (expiredCount > 0) {
-            this.stats.expirations += expiredCount;
-            this.stats.cleanups++;
-            console.log(`[${this.name}] Cleanup completed: ${expiredCount} expired items removed (${before} -> ${this.cache.size})`);
-        }
+        return this._service.purgeStale();
     }
-    
+
     /**
-     * 积极清理（内存压力时）
+     * 内存压力下主动收缩到 70% 容量
+     * @returns {void}
      */
     _aggressiveCleanup() {
-        const targetSize = Math.floor(this.maxSize * 0.7); // 清理到70%容量
-        let removedCount = 0;
-        
-        // 首先清理过期项
-        this._performCleanup();
-        
-        // 如果还是太多，按LRU淘汰
-        while (this.cache.size > targetSize && this.accessOrder.size > 0) {
-            const oldestKey = this.accessOrder.keys().next().value;
-            this.cache.delete(oldestKey);
-            this.accessOrder.delete(oldestKey);
-            removedCount++;
-        }
-        
-        if (removedCount > 0) {
-            this.stats.evictions += removedCount;
-            console.log(`[${this.name}] Aggressive cleanup: ${removedCount} items evicted`);
+        const target = Math.floor(this.maxSize * 0.7);
+        this._service.purgeStale();
+
+        for (const key of this._service._cache.keys()) {
+            if (this._service.size <= target) break;
+            this._service._cache.delete(key);
         }
     }
-    
+
     /**
-     * 检查是否需要淘汰并执行LRU淘汰
+     * 兼容旧调用方：条目上限现在由 lru-cache 自动保证
+     * @returns {void}
      */
     _evictIfNeeded() {
-        while (this.cache.size >= this.maxSize && this.accessOrder.size > 0) {
-            const oldestKey = this.accessOrder.keys().next().value;
-            this.cache.delete(oldestKey);
-            this.accessOrder.delete(oldestKey);
-            this.stats.evictions++;
-        }
-    }
-    
-    /**
-     * 估算内存使用量（简单估算）
-     * @returns {string}
-     */
-    _estimateMemoryUsage() {
-        const avgKeySize = 50; // 平均键长度
-        const avgValueSize = 1024; // 平均值大小（1KB）
-        const estimatedBytes = this.cache.size * (avgKeySize + avgValueSize);
-        
-        if (estimatedBytes < 1024) return `${estimatedBytes}B`;
-        if (estimatedBytes < 1024 * 1024) return `${(estimatedBytes / 1024).toFixed(1)}KB`;
-        return `${(estimatedBytes / (1024 * 1024)).toFixed(1)}MB`;
+        // no-op：LRUCache 在 set 时按 max/maxSize 自动淘汰
     }
 }
-
 /**
  * 验证身份认证
  * @param {Object} request - Fastify请求对象
@@ -323,7 +201,7 @@ export class SmartCacheManager {
  * @returns {boolean} 验证是否通过
  */
 export function verifyAuth(request, reply) {
-    const requiredAuth = ENV.get('PROXY_AUTH', 'drpys');
+    const requiredAuth = process.env.PROXY_AUTH || ENV.get('PROXY_AUTH', 'CHANGE_ME_PROXY_AUTH');
     const providedAuth = request.query.auth;
     
     if (!providedAuth || providedAuth !== requiredAuth) {
@@ -385,7 +263,7 @@ export function decodeParam(param, isJson = false) {
         try {
             return JSON.parse(decoded);
         } catch (e) {
-            console.warn('Failed to parse headers as JSON:', decoded);
+            _log.warn('Failed to parse headers as JSON:', decoded);
             return {};
         }
     }
@@ -454,7 +332,8 @@ export function makeRemoteRequest(url, headers, method = 'GET', range = null, ti
                 path: urlObj.pathname + urlObj.search,
                 method: method,
                 headers: requestHeaders,
-                timeout: timeout
+                timeout: timeout,
+                lookup: EGRESS_LOOKUP,
             };
 
             const req = httpModule.request(options, (res) => {

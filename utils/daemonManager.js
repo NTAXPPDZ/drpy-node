@@ -15,6 +15,8 @@ import net from 'net';
 import {promisify} from 'util';
 import {exec} from 'child_process';
 import {fileURLToPath} from "url";
+import {createLogger as __createLogger} from './logger.js';
+const _log = __createLogger('utils/daemonManager');
 
 // 将exec转换为Promise形式
 const execAsync = promisify(exec);
@@ -45,11 +47,20 @@ function ensureDir(dir) {
  */
 function log(logFile, level, msg) {
     const line = `${new Date().toISOString()} [${level}] ${msg}\n`;
-    fs.appendFileSync(logFile, line);
+    try {
+        // 异步追加，失败只记一次警告，不阻塞守护进程读写
+        fs.promises.appendFile(logFile, line).catch((error) => {
+            if (!this._logWriteWarned) {
+                this._logWriteWarned = true;
+                _log.error(`[daemon] 写入日志失败: ${error.message}`);
+            }
+        });
+    } catch {
+    }
     if (level === 'ERROR' || level === 'CRITICAL') {
-        console.error(line.trim());
+        _log.error(line.trim());
     } else {
-        console.log(line.trim());
+        _log.info(line.trim());
     }
 }
 

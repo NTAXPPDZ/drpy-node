@@ -22,11 +22,16 @@ import {base64Decode} from '../libs_drpy/crypto-util.js';
 import {ENV} from "../utils/env.js";
 import {validatePwd} from "../utils/api_validate.js";
 import {startJsonWatcher, getApiEngine} from "../utils/api_helper.js";
+import {PathSecurityError} from "../utils/security/pathGuard.js";
+import {sendError, ApiError, ErrorCodes} from "../utils/runtime/errors.js";
+import {getRequestId} from "../utils/runtime/requestContext.js";
 import * as drpyS from '../libs/drpyS.js';
 import hipy from '../libs/hipy.js';
 import php from '../libs/php.js';
 import xbpq from '../libs/xbpq.js';
 import catvod from '../libs/catvod.js';
+import {createLogger as __createLogger} from '../utils/logger.js';
+const _log = __createLogger('controllers/api');
 
 /**
  * 支持的引擎映射表
@@ -50,28 +55,53 @@ const ENGINES = {
  * @param {string|null} invokeMethod - 调用方法类型，用于确定超时时间
  * @returns {Promise} 包装后的Promise，会在超时时reject
  */
-function withTimeout(promise, timeoutMs = null, operation = 'API操作', invokeMethod = null) {
+/**
+ * 带超时的执行包装（对应项目书 P1-01）
+ * - 超时后清理定时器，避免事件循环残留与 Promise 悬挂；
+ * - 抛出统一 ApiError(TIMEOUT/504)，由全局 errorHandler 输出信封；
+ * - 支持传入工厂函数 (signal) => Promise，可把 AbortSignal 传给可中断的上游调用。
+ *
+ * 注意：第三方源的同步脚本执行无法被 AbortSignal 中断，这一点在项目书中已列为边界。
+ */
+function withTimeout(task, timeoutMs = null, operation = 'API操作', invokeMethod = null, context = {}) {
     let defaultTimeout;
 
-    // 根据invokeMethod确定超时时间
     if (invokeMethod === 'action') {
-        // action接口使用专用超时时间，默认60秒
         defaultTimeout = parseInt(process.env.API_ACTION_TIMEOUT || '60') * 1000;
     } else {
-        // 其他接口使用默认超时时间，默认20秒
         defaultTimeout = parseInt(process.env.API_TIMEOUT || '20') * 1000;
     }
 
     const actualTimeout = timeoutMs || defaultTimeout;
+    const controller = new AbortController();
+    const startedAt = Date.now();
+    let timer = null;
 
-    return Promise.race([
-        promise,
-        new Promise((_, reject) => {
-            setTimeout(() => {
-                reject(new Error(`${operation}超时 (${actualTimeout}ms)`));
-            }, actualTimeout);
-        })
-    ]);
+    const work = typeof task === 'function'
+        ? Promise.resolve().then(() => task(controller.signal))
+        : Promise.resolve(task);
+
+    const timeoutPromise = new Promise((_, reject) => {
+        timer = setTimeout(() => {
+            controller.abort(new Error(operation + '超时'));
+            const error = new ApiError(ErrorCodes.TIMEOUT, operation + '超时 (' + actualTimeout + 'ms)', 504, {expose: true});
+            if (context.logger && typeof context.logger.warn === 'function') {
+                context.logger.warn({
+                    route: context.route,
+                    module: context.module,
+                    phase: context.phase,
+                    operation,
+                    elapsedMs: Date.now() - startedAt,
+                    timeoutMs: actualTimeout,
+                }, 'api timeout');
+            }
+            reject(error);
+        }, actualTimeout);
+    });
+
+    return Promise.race([work, timeoutPromise]).finally(() => {
+        if (timer) clearTimeout(timer);
+    });
 }
 
 /**
@@ -104,7 +134,27 @@ export default (fastify, options, done) => {
         url: '/api/:module',
         preHandler: validatePwd, // 密码验证中间件
         schema: {
-            consumes: ['application/json', 'application/x-www-form-urlencoded'], // 声明支持的内容类型
+            consumes: ['application/json', 'application/x-www-form-urlencoded'],
+            params: {
+                type: 'object',
+                properties: {
+                    module: {type: 'string', minLength: 1, maxLength: 128, pattern: '^[^/]+$'},
+                },
+                required: ['module'],
+            },
+            querystring: {
+                type: 'object',
+                additionalProperties: true,
+                properties: {
+                    wd: {type: 'string', maxLength: 200},
+                    pg: {anyOf: [{type: 'string'}, {type: 'number'}]},
+                    ext: {anyOf: [{type: 'string'}, {type: 'number'}]},
+                    ac: {anyOf: [{type: 'string'}, {type: 'number'}]},
+                    t: {anyOf: [{type: 'string'}, {type: 'number'}]},
+                    ids: {anyOf: [{type: 'string'}, {type: 'number'}]},
+                    play: {type: 'string', maxLength: 2048},
+                },
+            },
         },
         handler: async (request, reply) => {
             const moduleName = request.params.module;
@@ -113,16 +163,23 @@ export default (fastify, options, done) => {
             // 根据请求方法选择参数来源
             const query = method === 'GET' ? request.query : Object.assign(request.query || {}, request.body);
 
-            // 获取API引擎和模块路径
-            let {apiEngine, moduleDir, _ext, modulePath} = getApiEngine(ENGINES, moduleName, query, options);
+            // 获取API引擎和模块路径（模块名非法时返回 400，而不是 500）
+            let apiEngine;
+            let moduleDir;
+            let _ext;
+            let modulePath;
+            try {
+                ({apiEngine, moduleDir, _ext, modulePath} = getApiEngine(ENGINES, moduleName, query, options));
+            } catch (error) {
+                if (error instanceof PathSecurityError) {
+                    return sendError(reply, ApiError.badRequest('Invalid module name'), {requestId: getRequestId(request)});
+                }
+                throw error;
+            }
 
             // 检查模块文件是否存在
             if (!existsSync(modulePath)) {
-                const error_msg=`Module ${moduleName} not found`;
-                console.error(error_msg);
-                fastify.log.error(error_msg);
-                reply.status(404).send({error: error_msg});
-                return;
+                return sendError(reply, new ApiError('MODULE_NOT_FOUND', 'Module ' + moduleName + ' not found', 404, {expose: true}), {requestId: getRequestId(request)});
             }
 
             // 获取模块扩展参数
@@ -380,7 +437,7 @@ export default (fastify, options, done) => {
             } catch (error) {
                 // 错误处理和日志记录
                 const error_msg=`Failed to process module ${moduleName}: ${error.message}`;
-                console.error(error_msg);
+                _log.error(error_msg);
                 fastify.log.error(error_msg);
                 reply.status(500).send({error: error_msg});
             }
@@ -398,16 +455,21 @@ export default (fastify, options, done) => {
         const moduleName = request.params.module;
         const query = request.query; // 获取 query 参数
 
-        // 获取API引擎和模块路径
-        let {apiEngine, modulePath} = getApiEngine(ENGINES, moduleName, query, options);
+        // 获取API引擎和模块路径（模块名非法时返回 400，而不是 500）
+        let apiEngine;
+        let modulePath;
+        try {
+            ({apiEngine, modulePath} = getApiEngine(ENGINES, moduleName, query, options));
+        } catch (error) {
+            if (error instanceof PathSecurityError) {
+                return sendError(reply, ApiError.badRequest('Invalid module name'), {requestId: getRequestId(request)});
+            }
+            throw error;
+        }
 
         // 检查模块文件是否存在
         if (!existsSync(modulePath)) {
-            const error_msg=`Module ${moduleName} not found`;
-            console.error(error_msg);
-            fastify.log.error(error_msg);
-            reply.status(404).send({error: error_msg});
-            return;
+            return sendError(reply, new ApiError('MODULE_NOT_FOUND', 'Module ' + moduleName + ' not found', 404, {expose: true}), {requestId: getRequestId(request)});
         }
 
         const proxyPath = request.params['*']; // 捕获整个路径
@@ -491,7 +553,7 @@ export default (fastify, options, done) => {
                 } catch (e) {
                     const error_msg = `Local Proxy toBytes error: ${e}`;
                     fastify.log.error(error_msg);
-                    console.error(error_msg);
+                    _log.error(error_msg);
                 }
             }
             // 流代理 - 重定向到媒体代理服务
@@ -538,7 +600,7 @@ export default (fastify, options, done) => {
         } catch (error) {
             const error_msg = `Error proxy module ${moduleName}:${error.message}`;
             fastify.log.error(error_msg);
-            console.error(error_msg);
+            _log.error(error_msg);
             reply.status(500).send({error: error_msg});
         }
     });
@@ -562,7 +624,7 @@ export default (fastify, options, done) => {
         if (!existsSync(jxPath)) {
             const error_msg = `解析 ${jxName} not found`;
             fastify.log.error(error_msg);
-            console.error(error_msg);
+            _log.error(error_msg);
             return reply.status(404).send({error: error_msg});
         }
 
@@ -648,7 +710,7 @@ export default (fastify, options, done) => {
                 backResp.cost = t2 - t1;
 
                 let backRespSend = JSON.stringify(backResp);
-                console.log(backRespSend);
+                _log.info(backRespSend);
                 return reply.code(statusCode).type(`${mediaType}; charset=utf-8`).send(backRespSend);
             }
             // 处理字符串类型的响应
@@ -671,13 +733,13 @@ export default (fastify, options, done) => {
                 }
 
                 let backRespSend = JSON.stringify(result);
-                console.log(backRespSend);
+                _log.info(backRespSend);
                 return reply.code(statusCode).type(`${mediaType}; charset=utf-8`).send(backRespSend);
             } else {
                 // 其他类型的响应，返回失败
                 const error_msg = `${jxName}解析失败`;
                 fastify.log.error(error_msg);
-                console.error(error_msg);
+                _log.error(error_msg);
                 return reply.status(404).send({error: error_msg});
             }
 
@@ -685,7 +747,7 @@ export default (fastify, options, done) => {
             // 错误处理和日志记录
             const error_msg = `Failed to proxy jx ${jxName}: ${error.message}`;
             fastify.log.error(error_msg);
-            console.error(error_msg);
+            _log.error(error_msg);
             reply.status(500).send({error: error_msg});
         }
     });
