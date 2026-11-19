@@ -1,6 +1,8 @@
 import {readFileSync, writeFileSync, existsSync, mkdirSync} from 'fs';
 import path from 'path';
 import {validateBasicAuth} from "../utils/api_validate.js";
+import {createLogger as __createLogger} from '../utils/logger.js';
+const _log = __createLogger('controllers/source-checker');
 
 /**
  * Source Checker 相关路由
@@ -55,10 +57,10 @@ export default (fastify, options, done) => {
             const reportConfigUrl = reportData.configUrl.trim();
             if (reportConfigUrl !== serverConfigUrl) {
                 // 记录非同源保存尝试
-                console.warn(`[Source-Checker] 检测到非同源报告保存尝试:`);
-                console.warn(`  报告配置地址: ${reportConfigUrl}`);
-                console.warn(`  服务器配置地址: ${serverConfigUrl}`);
-                console.warn(`  客户端IP: ${request.ip}`);
+                _log.warn(`[Source-Checker] 检测到非同源报告保存尝试:`);
+                _log.warn(`  报告配置地址: ${reportConfigUrl}`);
+                _log.warn(`  服务器配置地址: ${serverConfigUrl}`);
+                _log.warn(`  客户端IP: ${request.ip}`);
 
                 // 允许保存但添加警告标记
                 reportData._warning = {
@@ -95,7 +97,7 @@ export default (fastify, options, done) => {
             reply.send(response);
 
         } catch (error) {
-            console.error('[Source-Checker] 保存报告失败:', error);
+            _log.error('[Source-Checker] 保存报告失败:', error);
             reply.status(500).send({
                 success: false,
                 message: '保存报告失败',

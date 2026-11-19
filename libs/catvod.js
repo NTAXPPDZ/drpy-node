@@ -5,6 +5,8 @@ import {computeHash, deepCopy, getNowTime, urljoin} from "../utils/utils.js";
 import {fileURLToPath, pathToFileURL} from 'url';
 import {md5} from "../libs_drpy/crypto-util.js";
 import {fastify} from "../controllers/fastlogger.js";
+import {createLogger as __createLogger} from '../utils/logger.js';
+const _log = __createLogger('libs/catvod');
 // 缓存已初始化的模块和文件 hash 值
 const moduleCache = new Map();
 const ruleObjectCache = new Map();
@@ -14,7 +16,7 @@ const _config_path = path.join(__dirname, '../config');
 const _lib_path = path.join(__dirname, '../spider/catvod');
 const enable_cat_debug = Number(process.env.CAT_DEBUG) !== 2;
 
-// console.log('enable_cat_debug:', enable_cat_debug);
+// _log.info('enable_cat_debug:', enable_cat_debug);
 
 const json2Object = function (json) {
     if (!json) {
@@ -40,7 +42,7 @@ const loadEsmWithEnv = async function (filePath, env) {
     let injectedCode = rawCode;
     // 不用管这里,CAT_DEBUG=0的时候走这个逻辑也是会被esm-register处理
     // let injectedCode = rawCode.replaceAll('assets://js/lib/', '../catLib/'); // esm-register处理了，这里不管
-    // console.log('loadEsmWithEnv:', env);
+    // _log.info('loadEsmWithEnv:', env);
     const esm_flag1 = 'export function __jsEvalReturn';
     const esm_flag2 = 'export default';
     const polyfill_code = `
@@ -63,9 +65,9 @@ export function initEnv(env){
     // 改为在 esm-register.mjs 里实现，这里注释掉
     // if (injectedCode.includes('../catLib/crypto-js.js')) {
     //     const cryptoJsPath = path.join(_lib_path, '../catLib', 'crypto-js.js');
-    //     // console.log('cryptoJsPath:',cryptoJsPath);
+    //     // _log.info('cryptoJsPath:',cryptoJsPath);
     //     const cryptoHref = pathToFileURL(cryptoJsPath).href;
-    //     console.log('cryptoHref:', cryptoHref);
+    //     _log.info('cryptoHref:', cryptoHref);
     //     // const cryptoJsCode = await readFile(cryptoJsPath, 'utf-8');
     //     // const cryptoJsBase64 = Buffer.from(cryptoJsCode).toString('base64');
     //     injectedCode = injectedCode.replace(
@@ -75,7 +77,7 @@ export function initEnv(env){
     //     );
     // }
 
-    // console.log('injectedCode:\n', injectedCode);
+    // _log.info('injectedCode:\n', injectedCode);
     // // 创建数据URI模块
     const dataUri = `data:text/javascript;base64,${Buffer.from(injectedCode).toString('base64')}`;
     const module = await import(dataUri);
@@ -135,16 +137,16 @@ const init = async function (filePath, env = {}, refresh) {
         } else {
             module = await loadEsmWithEnv(filePath, env);
         }
-        // console.log('module:', module);
+        // _log.info('module:', module);
         let rule;
         if (module && module.__jsEvalReturn && typeof module.__jsEvalReturn === 'function') {
             rule = module.__jsEvalReturn();
         } else {
             rule = module.default || module;
         }
-        // console.log('rule:', rule);
-        // console.log('globalThis.ENV:', globalThis.ENV);
-        // console.log('globalThis.getProxyUrl:', globalThis.getProxyUrl);
+        // _log.info('rule:', rule);
+        // _log.info('globalThis.ENV:', globalThis.ENV);
+        // _log.info('globalThis.getProxyUrl:', globalThis.getProxyUrl);
         // 加载 init
         if (typeof rule.init === 'function') {
             await rule.init(default_init_cfg);
@@ -155,7 +157,7 @@ const init = async function (filePath, env = {}, refresh) {
         moduleCache.set(hashMd5, {moduleObject, hash: fileHash, proxyUrl: env.proxyUrl});
         return moduleObject;
     } catch (error) {
-        console.log(`Error in catvod.init :${filePath}`, error);
+        _log.info(`Error in catvod.init :${filePath}`, error);
         throw new Error(`Failed to initialize module:${error.message}`);
     }
 }
@@ -171,7 +173,7 @@ const homeVod = async function (filePath, env) {
         const homeVodResult = json2Object(await moduleObject.homeVod());
         return homeVodResult && homeVodResult.list ? homeVodResult.list : homeVodResult;
     } catch (e) {
-        console.error(e);
+        _log.error(e);
         // fastify.log.error(e);
         return []
     }
@@ -187,7 +189,7 @@ const detail = async function (filePath, env, ids) {
     const moduleObject = await init(filePath, env);
     const vod_id = Array.isArray(ids) ? ids[0] : ids;
     let detailResult = '{}';
-    // console.log('type of detailContent:', typeof moduleObject.detailContent);
+    // _log.info('type of detailContent:', typeof moduleObject.detailContent);
     if (moduleObject.detailContent) { // tvbox形式猫源二级参数传ids列表
         detailResult = await moduleObject.detailContent(ids);
     } else { // ds/cat传非id

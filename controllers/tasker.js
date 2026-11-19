@@ -120,7 +120,7 @@ export default (fastify, options, done) => {
                     ['.mjs', '.js'].includes(path.extname(file)) && 
                     !scripts_exclude.includes(file)) {
                     
-                    console.log(`Starting script execution:${file}| ${filePath}`);
+                    _log.info(`Starting script execution:${file}| ${filePath}`);
                     await executeScript(filePath);
                 }
             }
@@ -172,8 +172,8 @@ export default (fastify, options, done) => {
     
     // 根据环境变量决定是否启动定时任务
     if (enable_tasker) {
-        console.log('enable_tasker:', enable_tasker);
-        console.log(`tasker_interval: ${tasker_interval} (ms) => ${tasker_interval / 60000}(m)`);
+        _log.info('enable_tasker:', enable_tasker);
+        _log.info(`tasker_interval: ${tasker_interval} (ms) => ${tasker_interval / 60000}(m)`);
         
         // 启动定时任务调度器
         startScheduledTasks();
@@ -182,3 +182,5 @@ export default (fastify, options, done) => {
     // 插件初始化完成
     done();
 };
+import {createLogger as __createLogger} from '../utils/logger.js';
+const _log = __createLogger('controllers/tasker');

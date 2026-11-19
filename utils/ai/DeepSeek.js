@@ -13,6 +13,8 @@
  */
 
 import axios from 'axios';
+import {createLogger as __createLogger} from '../logger.js';
+const _log = __createLogger('utils/ai/DeepSeek');
 
 /**
  * DeepSeek AI 客户端类
@@ -98,7 +100,7 @@ class DeepSeek {
      * @example
      * const deepseek = new DeepSeek({ apiKey: 'your-api-key' });
      * const answer = await deepseek.ask('user123', '解释一下深度学习的原理');
-     * console.log(answer);
+     * _log.info(answer);
      */
     async ask(userId, prompt, options = {}) {
         // 确保用户上下文已初始化
@@ -115,7 +117,7 @@ class DeepSeek {
         };
 
         // 调试输出请求载荷
-        console.log('DeepSeek API Request Payload:', payload);
+        _log.info('DeepSeek API Request Payload:', payload);
 
         try {
             // 发送 API 请求
@@ -141,7 +143,7 @@ class DeepSeek {
             }
         } catch (error) {
             // 记录错误并重新抛出
-            console.error('Error while communicating with DeepSeek AI:', error.message);
+            _log.error('Error while communicating with DeepSeek AI:', error.message);
             
             // 如果是 axios 错误，提供更详细的错误信息
             if (error.response) {

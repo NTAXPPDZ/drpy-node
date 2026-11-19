@@ -1,6 +1,8 @@
 import {ENV} from "../env.js";
 import axios from "axios";
 import CryptoJS from "crypto-js";
+import {createLogger as __createLogger} from '../logger.js';
+const _log = __createLogger('utils/pan/xun');
 
 class XunDriver {
     constructor() {
@@ -33,9 +35,9 @@ class XunDriver {
         if (this.auth) {
             let info = JSON.parse(CryptoJS.enc.Base64.parse(this.auth.split('.')[1]).toString(CryptoJS.enc.Utf8))
             if (info.exp > Math.floor(Date.now() / 1000)) {
-                console.log("token未过期，继续使用")
+                _log.info("token未过期，继续使用")
             } else {
-                console.log("token过期，重新登录")
+                _log.info("token过期，重新登录")
             }
         } else {
             // await this.getAuth()
@@ -157,7 +159,7 @@ class XunDriver {
         };
         let login_data = (await axios.request(config))
         if (login_data.status === 200) {
-            console.log('登录成功')
+            _log.info('登录成功')
             return login_data.data.sessionID;
         }
     }
@@ -189,7 +191,7 @@ class XunDriver {
     }
 
     async getVerifyCode() {
-        console.log("验证码登录")
+        _log.info("验证码登录")
         if (this.deviceId === '' || this.deviceId === undefined) {
             let device_id = this.getuuid()
             ENV.set('device_id', device_id)
@@ -215,7 +217,7 @@ class XunDriver {
         };
         let verification = await axios.request(config).catch(e => e.response)
         if (verification.status === 200) {
-            console.log("验证码已发送")
+            _log.info("验证码已发送")
             this.verification_id = verification.data.verification_id
         }
     }
@@ -270,12 +272,12 @@ class XunDriver {
         };
         let sign = await axios.request(config).catch(e => e.response)
         if (sign.status === 200) {
-            console.log("登录成功")
+            _log.info("登录成功")
             ENV.set('xun_auth', sign.data.token_type + " " + sign.data.access_token)
             ENV.set('xun_user_id', sign.data.user_id)
             ENV.set('xun_refresh_token', sign.data.refresh_token)
         } else {
-            console.log("登录失败" + sign.data)
+            _log.info("登录失败" + sign.data)
         }
     }
 
@@ -335,9 +337,9 @@ class XunDriver {
         } else {
             let info = JSON.parse(CryptoJS.enc.Base64.parse(this.auth.split('.')[1]).toString(CryptoJS.enc.Utf8))
             if (info.exp > Math.floor(Date.now() / 1000)) {
-                console.log("登录成功")
+                _log.info("登录成功")
             } else {
-                console.log("登录过期，重新登录")
+                _log.info("登录过期，重新登录")
                 ENV.set('xun_auth', '')
                 await this.getAuth()
             }
@@ -652,9 +654,9 @@ class XunDriver {
         };
         let file_data = await axios.request(config).catch(e => e.response)
         if (file_data.data.share_status === 'OK') {
-            console.log("转存文件成功")
+            _log.info("转存文件成功")
         } else {
-            console.log(file_data.data.share_status)
+            _log.info(file_data.data.share_status)
         }
 
     }
@@ -730,7 +732,7 @@ class XunDriver {
             let file_data = await axios.request(config)
             if (file_data.status === 200) {
                 this.fileId = file_data.data.file.id
-                console.log("文件创建成功，开始转存")
+                _log.info("文件创建成功，开始转存")
             }
         }
     }
@@ -792,9 +794,9 @@ class XunDriver {
             };
             let delete_data = await axios.request(config).catch(e => e.response)
             if (delete_data.status === 200) {
-                console.log("删除文件成功")
+                _log.info("删除文件成功")
             } else if (delete_data.status === 404) {
-                console.log("文件未找到，删除失败")
+                _log.info("文件未找到，删除失败")
             }
         }
     }
@@ -904,7 +906,7 @@ class XunDriver {
             };
             let dwon_data = await axios(config).catch(e => e.response);
             if (dwon_data.status === 200) {
-                console.log("更新token成功")
+                _log.info("更新token成功")
                 ENV.set('xun_refresh_token', dwon_data.data.refresh_token);
                 ENV.set('xun_auth', dwon_data.data.token_type + " " + dwon_data.data.access_token)
             }
@@ -915,9 +917,9 @@ class XunDriver {
         } else {
             let info = JSON.parse(CryptoJS.enc.Base64.parse(this.auth.split('.')[1]).toString(CryptoJS.enc.Utf8))
             if (info.exp > Math.floor(Date.now() / 1000)) {
-                console.log("token未过期，继续使用")
+                _log.info("token未过期，继续使用")
             } else {
-                console.log("token过期，重新登录")
+                _log.info("token过期，重新登录")
                 ENV.set('xun_auth', '')
                 await this.getDownload_auth()
             }
@@ -950,7 +952,7 @@ class XunDriver {
             };
             let file_data = await axios.request(config)
             if (file_data.status === 200) {
-                // console.log("下载地址："+file_data.data.links['application/octet-stream'].url || file_data.data['web_content_link'])
+                // _log.info("下载地址："+file_data.data.links['application/octet-stream'].url || file_data.data['web_content_link'])
                 let link = file_data.data['web_content_link'] || file_data.data.links['application/octet-stream'].url
                 let host = new URL(link).host
                 if (this.host !== '') {
@@ -960,7 +962,7 @@ class XunDriver {
                 return link
             }
         } catch (e) {
-            console.log(e)
+            _log.info(e)
             return ''
         }
 

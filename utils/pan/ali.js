@@ -2,6 +2,8 @@ import dayjs from 'dayjs';
 import {IOS_UA} from '../misc.js';
 import {reqs} from '../req.js';
 import {ENV} from "../env.js";
+import {createLogger as __createLogger} from '../logger.js';
+const _log = __createLogger('utils/pan/ali');
 
 const apiUrl = 'https://api.aliyundrive.com';
 // const openApiUrl = 'https://open.aliyundrive.com/adrive/v1.0';
@@ -28,7 +30,7 @@ class AliDrive {
     // 初始化方法，加载本地配置
     async init() {
         if (this.token) {
-            console.log('阿里token获取成功：' + this.token)
+            _log.info('阿里token获取成功：' + this.token)
         }
         if (this.ali_refresh_token === '') {
             this.oauth.access_token = null
@@ -37,22 +39,22 @@ class AliDrive {
             let now = Math.floor(Date.now() / 1000)
             if (exp.exp < now) {
                 this.oauth.access_token = null
-                console.log('阿里ali_refresh_token已过期,重新获取阿里ali_refresh_token')
+                _log.info('阿里ali_refresh_token已过期,重新获取阿里ali_refresh_token')
             } else {
                 this.oauth.access_token = this.ali_refresh_token
-                console.log('阿里ali_refresh_token未过期，继续使用,可使用时间截止到：' + (new Date(exp.exp * 1000)).toLocaleString())
-                console.log('阿里ali_refresh_token获取成功：' + this.ali_refresh_token)
+                _log.info('阿里ali_refresh_token未过期，继续使用,可使用时间截止到：' + (new Date(exp.exp * 1000)).toLocaleString())
+                _log.info('阿里ali_refresh_token获取成功：' + this.ali_refresh_token)
             }
         }
     }
 
     get token() {
-        // console.log('env.cookie.quark:',ENV.get('quark_cookie'));
+        // _log.info('env.cookie.quark:',ENV.get('quark_cookie'));
         return ENV.get('ali_token');
     }
 
     get ali_refresh_token() {
-        // console.log('env.cookie.quark:',ENV.get('quark_cookie'));
+        // _log.info('env.cookie.quark:',ENV.get('quark_cookie'));
         return ENV.get('ali_refresh_token');
     }
 
@@ -166,18 +168,18 @@ class AliDrive {
                 headers: headers,
             })
             .catch((err) => {
-                console.error(err);
+                _log.error(err);
                 return err.response || {status: 500, data: {}};
             });
         if (resp.status === 401) {
-            console.error('请求未授权，尝试刷新 Token 并重试');
+            _log.error('请求未授权，尝试刷新 Token 并重试');
             await this.refreshAccessToken();
             Object.assign(headers, {
                 Authorization: this.user.auth,
             });
             return await this.api(url, data, headers, retry - 1);
         } else if (resp.status === 429 && retry > 0) {
-            console.error('请求频繁，请稍后再试');
+            _log.error('请求频繁，请稍后再试');
             await this.delay(1000);
             await this.refreshAccessToken();
             return await this.api(url, data, headers, retry - 1);
@@ -198,7 +200,7 @@ class AliDrive {
                     headers: headers,
                 })
                 .catch((err) => {
-                    console.error(err);
+                    _log.error(err);
                     return err.response || {status: 500, data: {}};
                 });
         } else {
@@ -210,7 +212,7 @@ class AliDrive {
                     headers: headers,
                 })
                 .catch((err) => {
-                    console.error(err);
+                    _log.error(err);
                     return err.response || {status: 500, data: {}};
                 });
         }
@@ -273,19 +275,19 @@ class AliDrive {
     //                     this.oauth.auth = `${this.oauth.token_type} ${this.oauth.access_token}`;
     //                     await ENV.set('ali_refresh_token', this.oauth.access_token);
     //                     // await ENV.set('oauth_cache', this.oauth);
-    //                     console.log("授权成功")
+    //                     _log.info("授权成功")
     //                 }
     //         } catch(err){
     //             if(err.status === '429'){
-    //                 console.error('请求频繁，请稍后再试')
+    //                 _log.error('请求频繁，请稍后再试')
     //             }else if(err.status === '401'){
-    //                 console.error("授权未成功，请重新授权")
+    //                 _log.error("授权未成功，请重新授权")
     //             }
     //             return err.response || {status: 500, data: {}};
     //         }
     //
     //     }else {
-    //         console.log("已授权")
+    //         _log.info("已授权")
     //     }
     // }
 
@@ -357,11 +359,11 @@ class AliDrive {
                     this.oauth.auth = `${this.oauth.token_type} ${this.oauth.access_token}`;
                     await ENV.set('ali_refresh_token', this.oauth.access_token);
                     // await ENV.set('oauth_cache', this.oauth);
-                    console.log("授权成功")
+                    _log.info("授权成功")
                 }
             }
         } else {
-            console.log("已授权，无需再授权")
+            _log.info("已授权，无需再授权")
         }
     }
 
@@ -387,7 +389,7 @@ class AliDrive {
                 ENV.set('ali_token', this.user.refresh_token);
                 // await ENV.set('user_cache', this.user);
             } else {
-                console.error('刷新 Access Token 失败');
+                _log.error('刷新 Access Token 失败');
             }
         }
     }
@@ -407,7 +409,7 @@ class AliDrive {
                     drive_id: this.user.drive.resource_drive_id,
                     file_id: item.file_id,
                 });
-                console.log(del);
+                _log.info(del);
             }
         }
     }
@@ -446,7 +448,7 @@ class AliDrive {
                         parent_file_id: 'root',
                         type: 'folder',
                     });
-                    console.log(create);
+                    _log.info(create);
                     if (create.file_id) {
                         this.saveDirId = create.file_id;
                     }
@@ -634,7 +636,7 @@ class AliDrive {
         if (resp.status === 200) {
             return resp.data
         } else {
-            console.log("获取用户信息失败")
+            _log.info("获取用户信息失败")
             return null
         }
     }

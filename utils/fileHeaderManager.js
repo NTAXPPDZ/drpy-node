@@ -2,6 +2,8 @@
 import fs from 'fs/promises';
 import path from 'path';
 import '../libs_drpy/_dist/json5.js';
+import {createLogger as __createLogger} from './logger.js';
+const _log = __createLogger('utils/fileHeaderManager');
 
 class FileHeaderManager {
     static COMMENT_CONFIG = {
@@ -122,7 +124,7 @@ class FileHeaderManager {
         try {
             return JSON5.parse(str);
         } catch (e) {
-            // console.warn('JSON5 parse failed, falling back to eval:', e.message);
+            // _log.warn('JSON5 parse failed, falling back to eval:', e.message);
             try {
                 // 尝试处理一些常见的非标准JSON格式
                 // 1. 给未加引号的键加上引号 (简单的正则替换，不够完美但能处理大部分情况)
@@ -352,7 +354,7 @@ class FileHeaderManager {
             try {
                 backupPath = await this.createBackup(filePath);
             } catch (error) {
-                console.warn(`Warning: Failed to create backup for ${filePath}: ${error.message}`);
+                _log.warn(`Warning: Failed to create backup for ${filePath}: ${error.message}`);
             }
         }
 
@@ -364,7 +366,7 @@ class FileHeaderManager {
                 try {
                     await fs.unlink(backupPath);
                 } catch (error) {
-                    console.warn(`Warning: Failed to delete backup file ${backupPath}: ${error.message}`);
+                    _log.warn(`Warning: Failed to delete backup file ${backupPath}: ${error.message}`);
                 }
             }
         } catch (error) {
@@ -372,9 +374,9 @@ class FileHeaderManager {
             if (backupPath) {
                 try {
                     await this.restoreFromBackup(filePath, backupPath);
-                    console.log(`File restored from backup: ${filePath}`);
+                    _log.info(`File restored from backup: ${filePath}`);
                 } catch (restoreError) {
-                    console.error(`Failed to restore from backup: ${restoreError.message}`);
+                    _log.error(`Failed to restore from backup: ${restoreError.message}`);
                 }
             }
             throw new Error(`Failed to write file: ${error.message}`);

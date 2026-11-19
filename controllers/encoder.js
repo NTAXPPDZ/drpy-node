@@ -24,6 +24,8 @@
 
 import {jsEncoder} from '../libs_drpy/drpyCustom.js';
 import {readFileSync, writeFileSync} from 'fs';
+import {createLogger as __createLogger} from '../utils/logger.js';
+const _log = __createLogger('controllers/encoder');
 
 // 检测命令行参数，支持直接对文件进行编码处理
 const args = process.argv.slice(2);
@@ -32,7 +34,7 @@ if (args.length > 0) {
     // 命令行模式：如果有参数，读取文件并进行Gzip压缩
     const filePath = args[0]; // 第一个参数作为文件路径
     let content = readFileSync(filePath, 'utf8');
-    console.log(`文件 ${filePath} 的内容长度为:${content.length}`);
+    _log.info(`文件 ${filePath} 的内容长度为:${content.length}`);
     // 将压缩后的内容写入到 .gz 扩展名的文件中
     writeFileSync(filePath + '.gz', jsEncoder.gzip(content), 'utf-8');
 }

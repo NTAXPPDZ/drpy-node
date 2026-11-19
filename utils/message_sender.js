@@ -1,5 +1,7 @@
 import axios from 'axios';
 import nodemailer from 'nodemailer';
+import {createLogger as __createLogger} from './logger.js';
+const _log = __createLogger('utils/message_sender');
 
 export default class MessageSender {
     static TYPE = {
@@ -16,18 +18,18 @@ export default class MessageSender {
      */
     static async send(text, type = MessageSender.TYPE.DINGDING) {
         if (!text) {
-            console.warn('[MessageSender] 消息内容不能为空');
+            _log.warn('[MessageSender] 消息内容不能为空');
             return;
         }
 
         // QQ邮箱只允许对象，其他类型必须为字符串
         if (type === MessageSender.TYPE.QQEMAIL && typeof text !== 'object') {
-            console.warn('[MessageSender] QQ邮箱类型只支持配置对象');
+            _log.warn('[MessageSender] QQ邮箱类型只支持配置对象');
             return;
         }
         
         if (type !== MessageSender.TYPE.QQEMAIL && typeof text !== 'string') {
-            console.warn('[MessageSender] 非邮箱类型消息内容必须是字符串');
+            _log.warn('[MessageSender] 非邮箱类型消息内容必须是字符串');
             return;
         }
 
@@ -45,14 +47,14 @@ export default class MessageSender {
                 break;
 
             default:
-                console.warn(`[MessageSender] 不支持的消息类型: ${type}`);
+                _log.warn(`[MessageSender] 不支持的消息类型: ${type}`);
         }
     }
 
     static async #sendDingDing(text) {
         const {dingding_webhook} = process.env;
         if (!dingding_webhook) {
-            console.log('[MessageSender] 未配置 dingding_webhook，跳过钉钉发送');
+            _log.info('[MessageSender] 未配置 dingding_webhook，跳过钉钉发送');
             return;
         }
         try {
@@ -60,16 +62,16 @@ export default class MessageSender {
                 msgtype: 'text',
                 text: {content: text}
             });
-            console.log('[MessageSender] 钉钉消息已发送');
+            _log.info('[MessageSender] 钉钉消息已发送');
         } catch (err) {
-            console.error('[MessageSender] 钉钉消息发送失败:', err.message);
+            _log.error('[MessageSender] 钉钉消息发送失败:', err.message);
         }
     }
 
     static async #sendWeChat(text) {
         const {wechat_webhook} = process.env;
         if (!wechat_webhook) {
-            console.log('[MessageSender] 未配置 wechat_webhook，跳过企业微信发送');
+            _log.info('[MessageSender] 未配置 wechat_webhook，跳过企业微信发送');
             return;
         }
         try {
@@ -77,9 +79,9 @@ export default class MessageSender {
                 msgtype: 'text',
                 text: {content: text}
             });
-            console.log('[MessageSender] 企业微信消息已发送');
+            _log.info('[MessageSender] 企业微信消息已发送');
         } catch (err) {
-            console.error('[MessageSender] 企业微信消息发送失败:', err.message);
+            _log.error('[MessageSender] 企业微信消息发送失败:', err.message);
         }
     }
 
@@ -96,7 +98,7 @@ export default class MessageSender {
         const {QQ_EMAIL, QQ_SMTP_AUTH_CODE} = process.env;
         
         if (!QQ_EMAIL || !QQ_SMTP_AUTH_CODE) {
-            console.log('[MessageSender] 未配置QQ邮箱或SMTP授权码，跳过邮件发送');
+            _log.info('[MessageSender] 未配置QQ邮箱或SMTP授权码，跳过邮件发送');
             return;
         }
 
@@ -121,9 +123,9 @@ export default class MessageSender {
             };
             
             const info = await transporter.sendMail(mailOptions);
-            console.log('[MessageSender] QQ邮件已发送: %s', info.accepted);
+            _log.info('[MessageSender] QQ邮件已发送: %s', info.accepted);
         } catch (err) {
-            console.error('[MessageSender] QQ邮件发送失败:', err.message);
+            _log.error('[MessageSender] QQ邮件发送失败:', err.message);
         } finally {
             transporter.close(); // 关闭连接池
         }

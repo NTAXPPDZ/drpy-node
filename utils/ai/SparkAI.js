@@ -13,6 +13,8 @@
  */
 
 import axios from 'axios';
+import {createLogger as __createLogger} from '../logger.js';
+const _log = __createLogger('utils/ai/SparkAI');
 
 /**
  * SparkAI 客户端类
@@ -98,7 +100,7 @@ class SparkAI {
      * @example
      * const sparkAI = new SparkAI({ authKey: 'your-auth-key' });
      * const answer = await sparkAI.ask('user123', '请介绍一下人工智能的发展历程');
-     * console.log(answer);
+     * _log.info(answer);
      */
     async ask(userId, prompt, options = {}) {
         // 确保用户上下文已初始化
@@ -115,7 +117,7 @@ class SparkAI {
         };
 
         // 调试输出请求载荷
-        console.log('SparkAI API Request Payload:', payload);
+        _log.info('SparkAI API Request Payload:', payload);
 
         try {
             // 发送 API 请求
@@ -141,7 +143,7 @@ class SparkAI {
             }
         } catch (error) {
             // 记录错误并重新抛出
-            console.error('Error while communicating with Spark AI:', error.message);
+            _log.error('Error while communicating with Spark AI:', error.message);
             
             // 如果是 axios 错误，提供更详细的错误信息
             if (error.response) {

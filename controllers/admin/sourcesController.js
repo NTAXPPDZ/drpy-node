@@ -4,6 +4,7 @@
  */
 
 import fs from '../../utils/fsWrapper.js';
+import {listKindSources} from '../../utils/sources/sourceIndex.js';
 import path from 'path';
 import vm from 'vm';
 import { execFile } from 'child_process';
@@ -20,35 +21,13 @@ export async function listSources(req, reply) {
         const phpPath = path.join(PROJECT_ROOT, 'spider/php');
         const pyPath = path.join(PROJECT_ROOT, 'spider/py');
 
-        let jsSources = [];
-        let catvodSources = [];
-        let phpSources = [];
-        let pySources = [];
-
-        if (await fs.pathExists(jsPath)) {
-            jsSources = (await fs.readdir(jsPath))
-                .filter(f => f.endsWith('.js') && !f.startsWith('_'))
-                .sort();
-        }
-
-        if (await fs.pathExists(catvodPath)) {
-            catvodSources = (await fs.readdir(catvodPath))
-                .filter(f => f.endsWith('.js') && !f.startsWith('_'))
-                .sort();
-        }
-
-        if (await fs.pathExists(phpPath)) {
-            phpSources = (await fs.readdir(phpPath))
-                .filter(f => f.endsWith('.php') && !f.startsWith('_'))
-                .sort();
-        }
-
-        if (await fs.pathExists(pyPath)) {
-            pySources = (await fs.readdir(pyPath))
-                .filter(f => f.endsWith('.py') && !f.startsWith('_'))
-                .sort();
-        }
-
+        // 统一经 utils/sources/sourceIndex.js 扫描（P2-03）：异步 readdir + 目录 mtime 缓存
+        const [jsSources, catvodSources, phpSources, pySources] = await Promise.all([
+            listKindSources(PROJECT_ROOT, 'js'),
+            listKindSources(PROJECT_ROOT, 'catvod'),
+            listKindSources(PROJECT_ROOT, 'php'),
+            listKindSources(PROJECT_ROOT, 'py'),
+        ]);
         return reply.send({
             js: jsSources,
             catvod: catvodSources,

@@ -8,6 +8,8 @@ import {PythonShell, PythonShellError} from 'python-shell';
 import {fastify} from "../controllers/fastlogger.js";
 import {daemon} from "../utils/daemonManager.js";
 import {netCallPythonMethod} from '../spider/py/core/bridge.js';
+import {createLogger as __createLogger} from '../utils/logger.js';
+const _log = __createLogger('libs/hipy');
 
 // 缓存已初始化的模块和文件 hash 值
 const moduleCache = new Map();
@@ -23,7 +25,7 @@ function stringify(arg) {
 }
 
 const json2Object = function (json) {
-    // console.log('json2Object:', json);
+    // _log.info('json2Object:', json);
     if (!json) {
         return {}
     } else if (json && typeof json === 'object') {
@@ -51,7 +53,7 @@ const loadEsmWithHash = async function (filePath, fileHash, env) {
         };
         // 将参数序列化为JSON字符串
         const jsonArgs = args.map(arg => JSON.stringify(arg));
-        console.log(methodName, ...jsonArgs);
+        _log.info(methodName, ...jsonArgs);
         try {
             const results = await PythonShell.run(bridgePath, {
                 ...options,
@@ -60,7 +62,7 @@ const loadEsmWithHash = async function (filePath, fileHash, env) {
             // 取最后一条返回
             let vodResult = results.slice(-1)[0];
             // if (methodName !== 'init') {
-            //     console.log(vodResult);
+            //     _log.info(vodResult);
             // }
             if (typeof vodResult === 'string' && vodResult) {
                 switch (vodResult) {
@@ -79,10 +81,10 @@ const loadEsmWithHash = async function (filePath, fileHash, env) {
 
                 }
             }
-            // console.log('hipy logs:', results.slice(0, -1));
+            // _log.info('hipy logs:', results.slice(0, -1));
             fastify.log.info(`hipy logs: ${JSON.stringify(results.slice(0, -1))}`);
             // fastify.log.info(`typeof vodResult: ${typeof vodResult}`);
-            // console.log('vodResult:', vodResult);
+            // _log.info('vodResult:', vodResult);
             // 检查是否有错误
             if (vodResult && vodResult.error) {
                 throw new Error(`Python错误: ${vodResult.error}\n${vodResult.traceback}`);
@@ -90,7 +92,7 @@ const loadEsmWithHash = async function (filePath, fileHash, env) {
 
             return vodResult; // 返回最后1个结果集
         } catch (error) {
-            console.error('error:', error);
+            _log.error('error:', error);
             if (error instanceof PythonShellError) {
                 // 尝试解析Python的错误输出
                 try {
@@ -114,7 +116,7 @@ const loadEsmWithHash = async function (filePath, fileHash, env) {
             `--env '${JSON.stringify(env)}'`,
             ...args.map(arg => `--arg '${stringify(arg)}'`)
         ].join(' ');
-        // console.log(command);
+        // _log.info(command);
         const cmd_args = [];
         args.forEach(arg => {
             cmd_args.push(`--arg`);
@@ -140,7 +142,7 @@ const loadEsmWithHash = async function (filePath, fileHash, env) {
         // 取最后一条返回
         const stdout = results.slice(-1)[0];
         fastify.log.info(`hipy logs: ${JSON.stringify(results.slice(0, -1))}`);
-        // console.log(`hipy logs: ${JSON.stringify(results.slice(0, -1))}`);
+        // _log.info(`hipy logs: ${JSON.stringify(results.slice(0, -1))}`);
         let vodResult = {};
         if (typeof stdout === 'string' && stdout) {
             switch (stdout) {
@@ -158,12 +160,12 @@ const loadEsmWithHash = async function (filePath, fileHash, env) {
                     break;
             }
         }
-        // console.log(typeof vodResult);
+        // _log.info(typeof vodResult);
         // 检查是否有错误
         if (vodResult && vodResult.error) {
             throw new Error(`Python错误: ${vodResult.error}\n${vodResult.traceback}`);
         }
-        // console.log(vodResult);
+        // _log.info(vodResult);
         return vodResult.result;
     }
 
@@ -220,7 +222,7 @@ const init = async function (filePath, env = {}, refresh) {
             const cached = moduleCache.get(hashMd5);
             // 除hash外还必须保证proxyUrl实时相等，避免本地代理url的尴尬情况
             if (cached.hash === fileHash && cached.proxyUrl === env.proxyUrl) {
-                // console.log('cached init');
+                // _log.info('cached init');
                 return cached.moduleObject;
             }
         }
@@ -228,7 +230,7 @@ const init = async function (filePath, env = {}, refresh) {
         let t1 = getNowTime();
         let module;
         module = await loadEsmWithHash(filePath, fileHash, env);
-        // console.log('module:', module);
+        // _log.info('module:', module);
         const rule = module;
         // const initValue = await rule.init(default_init_cfg) || {};
         const initValue = await rule.init(moduleExt) || {};
@@ -239,7 +241,7 @@ const init = async function (filePath, env = {}, refresh) {
         // return moduleObject;
         return {...moduleObject, ...initValue};
     } catch (error) {
-        console.log(`Error in hipy.init :${filePath}`, error);
+        _log.info(`Error in hipy.init :${filePath}`, error);
         throw new Error(`Failed to initialize module:${error.message}`);
     }
 }

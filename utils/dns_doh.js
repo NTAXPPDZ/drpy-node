@@ -15,6 +15,8 @@ import {HttpsProxyAgent} from 'https-proxy-agent';
 import {exec} from 'child_process';
 import util from 'util';
 import {ENV} from './env.js'; // Import ENV utility
+import {createLogger as __createLogger} from './logger.js';
+const _log = __createLogger('utils/dns_doh');
 
 const execAsync = util.promisify(exec);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -28,7 +30,7 @@ function getDohServers() {
     // Check if DOH is enabled via ENV (default: 0/false)
     const enableDoh = ENV.get('enable_doh', '0') === '1' || ENV.get('enable_doh') === 'true';
     if (!enableDoh) {
-        // console.log('[DOH] DOH is disabled via ENV.');
+        // _log.info('[DOH] DOH is disabled via ENV.');
         return [];
     }
 
@@ -41,15 +43,15 @@ function getDohServers() {
                     const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
                     if (config.doh && Array.isArray(config.doh) && config.doh.length > 0) {
                         dohServers = config.doh.map(server => server.url);
-                        console.log(`[DOH] Loaded ${dohServers.length} DOH servers from config.`);
+                        _log.info(`[DOH] Loaded ${dohServers.length} DOH servers from config.`);
                     }
                 }
             } catch (e) {
-                console.error('[DOH] Failed to load DOH config:', e.message);
+                _log.error('[DOH] Failed to load DOH config:', e.message);
             }
         }
     } catch (e) {
-        console.error('[DOH] Init failed:', e.message);
+        _log.error('[DOH] Init failed:', e.message);
         return [];
     }
     return dohServers || [];
@@ -65,7 +67,7 @@ export function getSystemProxy() {
     // Check if system proxy detection is enabled via ENV (default: 1/true)
     const enableProxy = ENV.get('enable_system_proxy', '1') === '1' || ENV.get('enable_system_proxy') === 'true';
     if (!enableProxy) {
-        // console.log('[DOH] System proxy detection is disabled via ENV.');
+        // _log.info('[DOH] System proxy detection is disabled via ENV.');
         return Promise.resolve(null);
     }
 
@@ -91,7 +93,7 @@ export function getSystemProxy() {
             // 1. Check Environment Variables
             const envProxy = process.env.HTTPS_PROXY || process.env.https_proxy || process.env.HTTP_PROXY || process.env.http_proxy;
             if (envProxy) {
-                // console.log(`[DOH] Detected proxy from env: ${envProxy}`);
+                // _log.info(`[DOH] Detected proxy from env: ${envProxy}`);
                 detectedProxy = envProxy;
             }
 
@@ -116,7 +118,7 @@ export function getSystemProxy() {
                             if (!proxyStr.startsWith('http')) {
                                 proxyStr = 'http://' + proxyStr;
                             }
-                            // console.log(`[DOH] Detected system proxy: ${proxyStr}`);
+                            // _log.info(`[DOH] Detected system proxy: ${proxyStr}`);
                             detectedProxy = proxyStr;
                         }
                     }
@@ -131,7 +133,7 @@ export function getSystemProxy() {
                     const proxyStr = stdout ? stdout.trim() : '';
                     if (proxyStr && proxyStr !== 'null' && proxyStr !== ':0') {
                         const finalProxy = proxyStr.startsWith('http') ? proxyStr : `http://${proxyStr}`;
-                        // console.log(`[DOH] Detected Android/Linux system proxy: ${finalProxy}`);
+                        // _log.info(`[DOH] Detected Android/Linux system proxy: ${finalProxy}`);
                         detectedProxy = finalProxy;
                     }
                 } catch (e) {
@@ -149,7 +151,7 @@ export function getSystemProxy() {
                         const portStr = port ? port.trim() : '';
                         if (hostStr && portStr && portStr !== '0') {
                             detectedProxy = `http://${hostStr}:${portStr}`;
-                            // console.log(`[DOH] Detected GNOME proxy: ${detectedProxy}`);
+                            // _log.info(`[DOH] Detected GNOME proxy: ${detectedProxy}`);
                         }
                     }
                 } catch (e) {
@@ -165,7 +167,7 @@ export function getSystemProxy() {
                         const portMatch = stdout.match(/HTTPPort\s*:\s*(\d+)/);
                         if (hostMatch && hostMatch[1]) {
                             detectedProxy = `http://${hostMatch[1]}:${portMatch && portMatch[1] ? portMatch[1] : '80'}`;
-                            // console.log(`[DOH] Detected macOS proxy: ${detectedProxy}`);
+                            // _log.info(`[DOH] Detected macOS proxy: ${detectedProxy}`);
                         }
                     }
                 } catch (e) {
@@ -173,12 +175,12 @@ export function getSystemProxy() {
             }
 
         } catch (e) {
-            console.error('[DOH] Error detecting proxy:', e.message);
+            _log.error('[DOH] Error detecting proxy:', e.message);
         } finally {
             // Update cache
             if (detectedProxy !== cachedProxy) {
-                if (detectedProxy) console.log(`[DOH] System proxy updated: ${detectedProxy}`);
-                else if (cachedProxy) console.log(`[DOH] System proxy cleared`);
+                if (detectedProxy) _log.info(`[DOH] System proxy updated: ${detectedProxy}`);
+                else if (cachedProxy) _log.info(`[DOH] System proxy cleared`);
                 cachedProxy = detectedProxy;
             }
             lastCheckTime = Date.now();
@@ -252,7 +254,7 @@ export async function resolveDoh(domain) {
             }
         }
     } catch (e) {
-        // console.error(`[DOH] Failed to resolve ${domain}:`, e.message);
+        // _log.error(`[DOH] Failed to resolve ${domain}:`, e.message);
     }
     return null;
 }

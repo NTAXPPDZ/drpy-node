@@ -10,6 +10,8 @@ import {WebDAVClient} from '../utils/webdav.js';
 import {CacheManagerFactory, createHealthResponse, createStatusResponse} from '../utils/proxy-util.js';
 import {readFileSync} from 'fs';
 import path from 'path';
+import {createLogger as __createLogger} from '../utils/logger.js';
+const _log = __createLogger('controllers/webdav-proxy');
 
 /**
  * WebDAV 代理控制器插件
@@ -55,7 +57,7 @@ export default (fastify, options, done) => {
 
             return parsed;
         } catch (error) {
-            console.warn('Could not load default WebDAV config:', error.message);
+            _log.warn('Could not load default WebDAV config:', error.message);
             return null;
         }
     }
@@ -65,7 +67,7 @@ export default (fastify, options, done) => {
      * GET /webdav/health - 检查 WebDAV 代理服务状态
      */
     fastify.get('/webdav/health', async (request, reply) => {
-        console.log(`[webdavController] Health check request`);
+        _log.info(`[webdavController] Health check request`);
 
         const healthData = createHealthResponse(webdavClients, fileCache, {
             features: [
@@ -87,7 +89,7 @@ export default (fastify, options, done) => {
     fastify.get('/webdav/file', async (request, reply) => {
         const {path: filePath, config: configParam} = request.query;
 
-        console.log(`[webdavController] File request: ${filePath}`);
+        _log.info(`[webdavController] File request: ${filePath}`);
 
         // 验证必需参数
         if (!filePath) {
@@ -180,7 +182,7 @@ export default (fastify, options, done) => {
             return reply.send(stream);
 
         } catch (error) {
-            console.error('[webdavController] File request error:', error);
+            _log.error('[webdavController] File request error:', error);
             return reply.status(500).send({error: error.message});
         }
     });
@@ -192,7 +194,7 @@ export default (fastify, options, done) => {
     fastify.get('/webdav/info', async (request, reply) => {
         const {path: filePath, config: configParam} = request.query;
 
-        console.log(`[webdavController] Info request: ${filePath}`);
+        _log.info(`[webdavController] Info request: ${filePath}`);
 
         // 验证必需参数
         if (!filePath) {
@@ -216,7 +218,7 @@ export default (fastify, options, done) => {
 
             return reply.send(fileInfo);
         } catch (error) {
-            console.error('[webdavController] Info request error:', error);
+            _log.error('[webdavController] Info request error:', error);
             return reply.status(500).send({error: error.message});
         }
     });
@@ -228,7 +230,7 @@ export default (fastify, options, done) => {
     fastify.get('/webdav/list', async (request, reply) => {
         const {path: dirPath = '/', config: configParam} = request.query;
 
-        console.log(`[webdavController] List request: ${dirPath}`);
+        _log.info(`[webdavController] List request: ${dirPath}`);
 
         try {
             let config;
@@ -247,7 +249,7 @@ export default (fastify, options, done) => {
 
             return reply.send(items);
         } catch (error) {
-            console.error('[webdavController] List request error:', error);
+            _log.error('[webdavController] List request error:', error);
             return reply.status(500).send({error: error.message});
         }
     });
@@ -257,7 +259,7 @@ export default (fastify, options, done) => {
      * POST /webdav/config - 测试和配置 WebDAV 连接
      */
     fastify.post('/webdav/config', async (request, reply) => {
-        console.log(`[webdavController] Config test request`);
+        _log.info(`[webdavController] Config test request`);
 
         try {
             const config = request.body;
@@ -283,7 +285,7 @@ export default (fastify, options, done) => {
                 }
             });
         } catch (error) {
-            console.error('[webdavController] Config test error:', error);
+            _log.error('[webdavController] Config test error:', error);
             return reply.status(500).send({error: error.message});
         }
     });
@@ -293,7 +295,7 @@ export default (fastify, options, done) => {
      * DELETE /webdav/cache - 清理缓存
      */
     fastify.delete('/webdav/cache', async (request, reply) => {
-        console.log(`[webdavController] Cache clear request`);
+        _log.info(`[webdavController] Cache clear request`);
 
         try {
             // 非VERCEL环境可在设置中心控制此功能是否开启
@@ -319,7 +321,7 @@ export default (fastify, options, done) => {
                 }
             });
         } catch (error) {
-            console.error('[webdavController] Cache clear error:', error);
+            _log.error('[webdavController] Cache clear error:', error);
             return reply.status(500).send({error: error.message});
         }
     });
@@ -329,7 +331,7 @@ export default (fastify, options, done) => {
      * GET /webdav/status - 获取代理服务状态
      */
     fastify.get('/webdav/status', async (request, reply) => {
-        console.log(`[webdavController] Status request`);
+        _log.info(`[webdavController] Status request`);
 
         try {
             const config = loadDefaultConfig();
@@ -366,7 +368,7 @@ export default (fastify, options, done) => {
 
             return reply.send(statusData);
         } catch (error) {
-            console.error('[webdavController] Status request error:', error);
+            _log.error('[webdavController] Status request error:', error);
             return reply.status(500).send({error: error.message});
         }
     });

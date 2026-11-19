@@ -13,6 +13,8 @@
  */
 
 import axios from 'axios';
+import {createLogger as __createLogger} from '../logger.js';
+const _log = __createLogger('utils/ai/Kimi');
 
 /**
  * Kimi AI 客户端类
@@ -97,7 +99,7 @@ class Kimi {
      * @example
      * const kimi = new Kimi({ apiKey: 'your-api-key' });
      * const answer = await kimi.ask('user123', '什么是人工智能？');
-     * console.log(answer);
+     * _log.info(answer);
      */
     async ask(userId, prompt, options = {}) {
         // 确保用户上下文已初始化
@@ -114,7 +116,7 @@ class Kimi {
         };
 
         // 调试输出请求载荷
-        console.log('Kimi API Request Payload:', payload);
+        _log.info('Kimi API Request Payload:', payload);
 
         try {
             // 发送 API 请求
@@ -140,7 +142,7 @@ class Kimi {
             }
         } catch (error) {
             // 记录错误并重新抛出
-            console.error('Error while communicating with Kimi AI:', error.message);
+            _log.error('Error while communicating with Kimi AI:', error.message);
             
             // 如果是 axios 错误，提供更详细的错误信息
             if (error.response) {

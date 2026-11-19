@@ -7,6 +7,8 @@ import '../../libs_drpy/jsencrypt.js'
 import {ENV} from "../env.js";
 import axios from "axios";
 import qs from "qs";
+import {createLogger as __createLogger} from '../logger.js';
+const _log = __createLogger('utils/pan/baidu2');
 
 /**
  * 百度网盘驱动类
@@ -72,7 +74,7 @@ class BaiduDrive {
      */
     async init() {
         if (this.cookie) {
-            console.log('百度网盘cookie获取成功' + this.cookie)
+            _log.info('百度网盘cookie获取成功' + this.cookie)
         }
     }
 

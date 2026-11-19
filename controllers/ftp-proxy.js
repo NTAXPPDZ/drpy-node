@@ -10,6 +10,8 @@ import {CacheManagerFactory, createHealthResponse, createStatusResponse} from '.
 import {readFileSync} from 'fs';
 import path from 'path';
 import { PROJECT_ROOT } from '../utils/pathHelper.js';
+import {createLogger as __createLogger} from '../utils/logger.js';
+const _log = __createLogger('controllers/ftp-proxy');
 
 /**
  * FTP 代理控制器插件
@@ -49,7 +51,7 @@ export default (fastify, options, done) => {
 
             return parsed;
         } catch (error) {
-            console.warn('Could not load default FTP config:', error.message);
+            _log.warn('Could not load default FTP config:', error.message);
             return null;
         }
     }
@@ -78,7 +80,7 @@ export default (fastify, options, done) => {
      * GET /ftp/health - 检查 FTP 代理服务状态
      */
     fastify.get('/ftp/health', async (request, reply) => {
-        console.log(`[ftpController] Health check request`);
+        _log.info(`[ftpController] Health check request`);
 
         const healthData = createHealthResponse(ftpClients, fileCache, {
             features: [
@@ -103,7 +105,7 @@ export default (fastify, options, done) => {
         handler: async (request, reply) => {
         const {path: filePath, config: configParam} = request.query;
 
-        console.log(`[ftpController] File request: ${filePath}`);
+        _log.info(`[ftpController] File request: ${filePath}`);
 
         // 验证必需参数
         if (!filePath) {
@@ -201,7 +203,7 @@ export default (fastify, options, done) => {
             }
 
         } catch (error) {
-            console.error('[ftpController] File request error:', error);
+            _log.error('[ftpController] File request error:', error);
             return reply.status(500).send({error: error.message});
         }
     }});
@@ -213,7 +215,7 @@ export default (fastify, options, done) => {
     fastify.get('/ftp/info', async (request, reply) => {
         const {path: filePath, config: configParam} = request.query;
 
-        console.log(`[ftpController] Info request: ${filePath}`);
+        _log.info(`[ftpController] Info request: ${filePath}`);
 
         // 验证必需参数
         if (!filePath) {
@@ -238,7 +240,7 @@ export default (fastify, options, done) => {
 
             return reply.send(fileInfo);
         } catch (error) {
-            console.error('[ftpController] Info request error:', error);
+            _log.error('[ftpController] Info request error:', error);
             return reply.status(500).send({error: error.message});
         }
     });
@@ -250,7 +252,7 @@ export default (fastify, options, done) => {
     fastify.get('/ftp/list', async (request, reply) => {
         const {path: dirPath = '/', config: configParam} = request.query;
 
-        console.log(`[ftpController] List request: ${dirPath}`);
+        _log.info(`[ftpController] List request: ${dirPath}`);
 
         try {
             let config;
@@ -270,7 +272,7 @@ export default (fastify, options, done) => {
 
             return reply.send(items);
         } catch (error) {
-            console.error('[ftpController] List request error:', error);
+            _log.error('[ftpController] List request error:', error);
             return reply.status(500).send({error: error.message});
         }
     });
@@ -280,7 +282,7 @@ export default (fastify, options, done) => {
      * POST /ftp/config - 测试和配置 FTP 连接
      */
     fastify.post('/ftp/config', async (request, reply) => {
-        console.log(`[ftpController] Config test request`);
+        _log.info(`[ftpController] Config test request`);
 
         try {
             let config = request.body;
@@ -310,7 +312,7 @@ export default (fastify, options, done) => {
                 }
             });
         } catch (error) {
-            console.error('[ftpController] Config test error:', error);
+            _log.error('[ftpController] Config test error:', error);
             return reply.status(500).send({error: error.message});
         }
     });
@@ -320,7 +322,7 @@ export default (fastify, options, done) => {
      * DELETE /ftp/cache - 清理缓存
      */
     fastify.delete('/ftp/cache', async (request, reply) => {
-        console.log(`[ftpController] Cache clear request`);
+        _log.info(`[ftpController] Cache clear request`);
 
         try {
             // 非VERCEL环境可在设置中心控制此功能是否开启
@@ -355,7 +357,7 @@ export default (fastify, options, done) => {
                 }
             });
         } catch (error) {
-            console.error('[ftpController] Cache clear error:', error);
+            _log.error('[ftpController] Cache clear error:', error);
             return reply.status(500).send({error: error.message});
         }
     });
@@ -365,7 +367,7 @@ export default (fastify, options, done) => {
      * GET /ftp/status - 获取代理服务状态
      */
     fastify.get('/ftp/status', async (request, reply) => {
-        console.log(`[ftpController] Status request`);
+        _log.info(`[ftpController] Status request`);
 
         try {
             const config = loadDefaultConfig();
@@ -405,7 +407,7 @@ export default (fastify, options, done) => {
 
             return reply.send(statusData);
         } catch (error) {
-            console.error('[ftpController] Status request error:', error);
+            _log.error('[ftpController] Status request error:', error);
             return reply.status(500).send({error: error.message});
         }
     });

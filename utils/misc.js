@@ -1,3 +1,5 @@
+import {createLogger as __createLogger} from './logger.js';
+const _log = __createLogger('utils/misc');
 /**
  * 杂项工具函数模块
  * 
@@ -288,7 +290,7 @@ export function jsonParse(input, json) {
             url: url,
         };
     } catch (error) {
-        console.log(error);
+        _log.info(error);
     }
     return {};
 }

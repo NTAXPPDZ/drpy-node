@@ -22,6 +22,8 @@ import { createReadStream, createWriteStream } from 'fs';
 import { pipeline } from 'stream/promises';
 import path from 'path';
 import { Readable, Writable } from 'stream';
+import {createLogger as __createLogger} from './logger.js';
+const _log = __createLogger('utils/ftp');
 
 /**
  * FTP 客户端类
@@ -113,7 +115,7 @@ export class FTPClient {
         } catch (error) {
             this.isConnected = false;
             this.connectionPromise = null;
-            console.error('FTP connection failed:', error.message);
+            _log.error('FTP connection failed:', error.message);
             throw new Error(`Failed to connect to FTP server: ${error.message}`);
         }
     }
@@ -127,7 +129,7 @@ export class FTPClient {
             try {
                 this.client.close();
             } catch (error) {
-                console.warn('Error closing FTP connection:', error.message);
+                _log.warn('Error closing FTP connection:', error.message);
             }
             this.client = null;
         }
@@ -149,7 +151,7 @@ export class FTPClient {
             }
             return false;
         } catch (error) {
-            console.error('FTP connection test failed:', error.message);
+            _log.error('FTP connection test failed:', error.message);
             return false;
         }
     }

@@ -108,7 +108,7 @@ try {
     } else {
         await import('../libs_drpy/crypto-js-wasm.js'); // 使用动态 import规避海阔报错无法运行问题
     }
-    globalThis.CryptoJSW = CryptoJSWasm;
+    globalThis.CryptoJSW = globalThis.CryptoJSWasm || CryptoJSWasm;
 } catch (error) {
     // log('Failed to import puppeteerHelper:', error);
     log(`[getSandbox] Failed to import CryptoJSWasm:${error.message}`);
@@ -176,7 +176,8 @@ const STATIC_DRPY_CUSTOM_SANDBOX = {
 
 const STATIC_LIBS_SANDBOX = {
     matchesAll, cut, gbkTool, CryptoJS, JSEncrypt, NODERSA, pako, JSON5, jinja, template, batchExecute,
-    atob, btoa, base64Encode, base64Decode, md5, rc4Encrypt, rc4Decrypt, rc4, rc4_decode, randomUa,
+    atob, btoa, base64Encode, base64Decode, md5, rc4Encrypt, rc4Decrypt, rc4, rc4_decode,
+    randomUa: globalThis.randomUa,
     jsonpath, hlsParser, axios, axiosX, URL, pathLib, executeParse, qs, Buffer, URLSearchParams, COOKIE,
     ENV, _ENV, Quark, Baidu, Baidu2, UC, Ali, Cloud, Yun, Pan, Xun, createWebDAVClient, createFTPClient,
     require: rootRequire, WebSocket, WebSocketServer, zlib, JSONbig, JsonBig, minizlib,
@@ -810,6 +811,7 @@ async function initParse(rule, env, vm, context) {
                 if (k.toLowerCase() === 'user-agent') {
                     let v = rule.headers[k];
                     if (['MOBILE_UA', 'PC_UA', 'UC_UA', 'IOS_UA', 'UA'].includes(v)) {
+                        // 信任边界：源脚本（spider/dr2）默认可信；vm 不是安全沙箱，无法隔离恶意源。不可信源需进程/容器级隔离，见 doc/drpy-node优化实施-验收记录.md 第四节。
                         rule.headers[k] = eval(v);
                         log('[initParse]', rule.headers[k])
                     }
@@ -969,6 +971,7 @@ export async function runMain(main_func_code, arg) {
         return ''
     };
     try {
+        // 信任边界：源脚本（spider/dr2）默认可信；vm 不是安全沙箱，无法隔离恶意源。不可信源需进程/容器级隔离，见 doc/drpy-node优化实施-验收记录.md 第四节。
         eval(main_func_code + '\nmainFunc=main;');
         return mainFunc(arg);
     } catch (e) {

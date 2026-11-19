@@ -4,6 +4,8 @@ import pkg from 'node-sqlite3-wasm';
 const {Database: SQLite3Database} = pkg; // 👈 关键别名
 import {fileURLToPath} from "url";
 import path from 'path';
+import {createLogger as __createLogger} from './logger.js';
+const _log = __createLogger('utils/database');
 
 // 2️⃣ 定义你的自定义类（可继承/扩展/完全重写）
 export class DataBase {
@@ -18,7 +20,7 @@ export class DataBase {
         const __dirname = path.dirname(__filename);
         const __rootPath = path.join(__dirname, '../');
         const __dbpath = path.join(__rootPath, this.db_file);
-        // console.log('__dbpath:', __dbpath);
+        // _log.info('__dbpath:', __dbpath);
         const db = new SQLite3Database(__dbpath);
         this.db = db;
         return db
@@ -56,21 +58,21 @@ async function main() {
 
     // 查询数据
     const users = db.all('SELECT * FROM users');
-    console.log(users);
+    _log.info(users);
 
     // 更新数据
     db.run('UPDATE users SET name = ? WHERE id = ?', ['Charlie', 1]);
 
     // 查询更新后的数据
     const updatedUsers = db.all('SELECT * FROM users');
-    console.log(updatedUsers);
+    _log.info(updatedUsers);
 
     // 删除数据
     db.run('DELETE FROM users WHERE id = ?', [2]);
 
     // 查询删除后的数据
     const finalUsers = db.all('SELECT * FROM users');
-    console.log(finalUsers);
+    _log.info(finalUsers);
 
     // 关闭数据库
     db.close();
@@ -78,4 +80,4 @@ async function main() {
 
 export const database = new DataBase('./database.db');
 
-// main().catch(err => console.error(err));
+// main().catch(err => _log.error(err));

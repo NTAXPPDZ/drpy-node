@@ -1,3 +1,5 @@
+import {createLogger as __createLogger} from './logger.js';
+const _log = __createLogger('utils/python');
 export function extractNameFromCode(code) {
     // 正则表达式解释：
     // def getName\(self\):   -- 匹配方法定义
@@ -19,4 +21,4 @@ export function extractNameFromCode(code) {
 //     filterate = False
 // `;
 //
-// console.log(extractNameFromCode(code)); // 输出："新浪资源"
+// _log.info(extractNameFromCode(code)); // 输出："新浪资源"

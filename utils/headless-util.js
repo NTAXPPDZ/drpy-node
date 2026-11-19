@@ -30,6 +30,8 @@
  */
 
 import * as puppeteer from 'puppeteer'
+import {createLogger as __createLogger} from './logger.js';
+const _log = __createLogger('utils/headless-util');
 
 /**
  * Puppeteer助手类
@@ -294,7 +296,7 @@ class PuppeteerHelper {
      * @example
      * const element = await helper.waitForSelector('.dynamic-content', {
      *   timeout: 10000,
-     *   onFound: (el) => console.log('Element found!')
+     *   onFound: (el) => _log.info('Element found!')
      * });
      */
     async waitForSelector(selector, options = {}) {

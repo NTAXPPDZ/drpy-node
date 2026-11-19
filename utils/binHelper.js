@@ -1,5 +1,7 @@
 import fs from 'fs';
 import path from 'path';
+import {createLogger as __createLogger} from './logger.js';
+const _log = __createLogger('utils/binHelper');
 
 /**
  * 确保文件具有执行权限 (Linux/macOS)
@@ -17,10 +19,10 @@ export function ensureExecutable(filePath) {
         const stats = fs.statSync(filePath);
         if (!(stats.mode & 0o111)) {
             fs.chmodSync(filePath, 0o755);
-            console.log(`[binHelper] 已为文件 ${filePath} 添加执行权限`);
+            _log.info(`[binHelper] 已为文件 ${filePath} 添加执行权限`);
         }
     } catch (err) {
-        console.error(`[binHelper] 无法设置执行权限: ${filePath}`, err.message);
+        _log.error(`[binHelper] 无法设置执行权限: ${filePath}`, err.message);
     }
 }
 

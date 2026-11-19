@@ -10,6 +10,8 @@ import CryptoJS from "crypto-js";
 import {join} from 'path';
 import fs from 'fs';
 import {PassThrough} from 'stream';
+import {createLogger as __createLogger} from '../logger.js';
+const _log = __createLogger('utils/pan/baidu');
 
 /**
  * 百度网盘处理类
@@ -61,7 +63,7 @@ class BaiduHandler {
      * @param {string} newCookie - 新的Cookie值
      */
     set cookie(newCookie) {
-        console.log('更新cookie');
+        _log.info('更新cookie');
         this._cookie = newCookie;
     }
 
@@ -216,9 +218,9 @@ class BaiduHandler {
 
             if (shareVerify.errno !== 0) {
                 if (shareVerify.errno === -62 || shareVerify.errno === -9) {
-                    console.log('提取码错误');
+                    _log.info('提取码错误');
                 }
-                console.log('验证提取码失败');
+                _log.info('验证提取码失败');
             }
 
             // 更新cookie中的BDCLND
@@ -227,12 +229,12 @@ class BaiduHandler {
                 if (cookie.length > 0 && !cookie.endsWith(';')) cookie += '; ';
                 cookie += `BDCLND=${shareVerify.randsk}`;
                 this.cookie = cookie;
-                console.log('已更新randsk到cookie中的BDCLND');
+                _log.info('已更新randsk到cookie中的BDCLND');
             }
 
             return shareVerify;
         } catch (error) {
-            console.log('验证分享链接失败:', error.message);
+            _log.info('验证分享链接失败:', error.message);
             throw error;
         }
     }
@@ -267,9 +269,9 @@ class BaiduHandler {
 
             if (listData.errno !== 0) {
                 if (listData.errno === -9) {
-                    console.log('提取码错误');
+                    _log.info('提取码错误');
                 }
-                console.log('获取文件列表失败');
+                _log.info('获取文件列表失败');
             }
 
             // 设置缓存
@@ -285,7 +287,7 @@ class BaiduHandler {
 
             return this.shareTokenCache[shareData.shareId];
         } catch (error) {
-            console.log('获取分享token失败:', error.message);
+            _log.info('获取分享token失败:', error.message);
             throw error;
         }
     }
@@ -624,10 +626,10 @@ class BaiduHandler {
             }, headers, 'post');
 
             if (deleteResp.errno === 0) {
-                console.log('清理保存目录成功');
+                _log.info('清理保存目录成功');
             }
         } catch (error) {
-            console.log('清理保存目录失败:', error.message);
+            _log.info('清理保存目录失败:', error.message);
             return;
         }
     }

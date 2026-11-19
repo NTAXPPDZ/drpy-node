@@ -6,6 +6,8 @@
 import axios from "axios";
 import {ENV} from "../env.js";
 import {base64Decode} from "../../libs_drpy/crypto-util.js";
+import {createLogger as __createLogger} from '../logger.js';
+const _log = __createLogger('utils/pan/pan123');
 
 /**
  * 123网盘操作类
@@ -28,7 +30,7 @@ class Pan123 {
             try {
                 await this.login();
             } catch (error) {
-                console.error('登录失败:', error.message);
+                _log.error('登录失败:', error.message);
             }
         }
     }
@@ -140,7 +142,7 @@ class Pan123 {
                 });
             }
         } catch (error) {
-            console.error('获取文件列表失败:', error.message);
+            _log.error('获取文件列表失败:', error.message);
         }
         return file;
     }
@@ -186,7 +188,7 @@ class Pan123 {
                 }
             }
         } catch (error) {
-            console.error('获取分享信息失败:', error.message);
+            _log.error('获取分享信息失败:', error.message);
         }
         return cate;
     }
@@ -224,7 +226,7 @@ class Pan123 {
                 })
             }
         } catch (error) {
-            console.error('获取分享文件列表失败:', error.message);
+            _log.error('获取分享文件列表失败:', error.message);
         }
         return video;
     }
@@ -269,15 +271,15 @@ class Pan123 {
                     let decodedUrl = base64Decode(params);
                     return decodedUrl;
                 } else {
-                    console.error('下载链接缺少params参数');
+                    _log.error('下载链接缺少params参数');
                     return downloadUrl;
                 }
             } else {
-                console.error('获取下载链接失败:', response.data.message || '未知错误');
+                _log.error('获取下载链接失败:', response.data.message || '未知错误');
                 return '';
             }
         } catch (error) {
-            console.error('获取下载链接失败:', error.message);
+            _log.error('获取下载链接失败:', error.message);
             return '';
         }
     }
@@ -325,7 +327,7 @@ class Pan123 {
                 return videoinfo;
             }
         } catch (error) {
-            console.error('获取视频播放链接失败:', error.message);
+            _log.error('获取视频播放链接失败:', error.message);
         }
         return []
     }

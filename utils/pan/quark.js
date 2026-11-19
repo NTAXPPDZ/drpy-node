@@ -24,6 +24,8 @@ import CryptoJS from "crypto-js";
 import {join} from 'path';
 import fs from 'fs';
 import {PassThrough} from 'stream';
+import {createLogger as __createLogger} from '../logger.js';
+const _log = __createLogger('utils/pan/quark');
 
 /**
  * 夸克网盘处理类
@@ -95,7 +97,7 @@ class QuarkHandler {
      * @returns {string} 夸克网盘Cookie字符串
      */
     get cookie() {
-        // console.log('env.cookie.quark:',ENV.get('quark_cookie'));
+        // _log.info('env.cookie.quark:',ENV.get('quark_cookie'));
         return ENV.get('quark_cookie');
     }
 
@@ -147,16 +149,16 @@ class QuarkHandler {
         //     let exp = JSON.parse(CryptoJS.enc.Base64.parse(this.token.split('.')[1]).toString(CryptoJS.enc.Utf8))
         //     let now = Math.floor(Date.now() / 1000)
         //     if (exp.exp < now) {
-        //         console.log('登录状态已过期,重新登录,请及时更换Token')
+        //         _log.info('登录状态已过期,重新登录,请及时更换Token')
         //     } else {
-        //         console.log('登录成功，继续使用,可使用时间截止到：' + (new Date(exp.exp * 1000)).toLocaleString())
-        //         console.log('QuarkTV token获取成功：' + this.token)
+        //         _log.info('登录成功，继续使用,可使用时间截止到：' + (new Date(exp.exp * 1000)).toLocaleString())
+        //         _log.info('QuarkTV token获取成功：' + this.token)
         //     }
         // }
         if (this.cookie) {
-            console.log("cookie 获取成功");
+            _log.info("cookie 获取成功");
         } else {
-            console.log("cookie 获取失败")
+            _log.info("cookie 获取失败")
         }
     }
 
@@ -338,12 +340,12 @@ class QuarkHandler {
             method === 'get' ? await reqs.get(link, {
                 headers: headers,
             }).catch((err) => {
-                console.error(err.message);
+                _log.error(err.message);
                 return err.response || {status: 500, data: {}};
             }) : await reqs.post(link, data, {
                 headers: headers,
             }).catch((err) => {
-                console.error(err.message);
+                _log.error(err.message);
                 return err.response || {status: 500, data: {}};
             });
         const leftRetry = retry || 3;
@@ -353,7 +355,7 @@ class QuarkHandler {
             if (puus) {
                 if (cookie.match(/__puus=([^;]+)/)[1] !== puus[1]) {
                     cookie = cookie.replace(/__puus=[^;]+/, `__puus=${puus[1]}`);
-                    console.log('[quark] api:更新cookie:', cookie);
+                    _log.info('[quark] api:更新cookie:', cookie);
                     ENV.set('quark_cookie', cookie);
                 }
             }
@@ -387,7 +389,7 @@ class QuarkHandler {
                 filelist: listData.data.list.map((v) => v.fid),
                 exclude_fids: [],
             });
-            // console.log(del);
+            // _log.info(del);
         }
     }
 
@@ -429,7 +431,7 @@ class QuarkHandler {
                 dir_path: '',
                 dir_init_lock: false,
             });
-            console.log(create);
+            _log.info(create);
             if (create.data && create.data.fid) {
                 this.saveDirId = create.data.fid;
             }
@@ -649,18 +651,18 @@ class QuarkHandler {
         const cookieResDataSelf = cookieSelfRes.headers;
         const resCookie = cookieResDataSelf['set-cookie'];
         if (!resCookie) {
-            console.log(`${from}自动更新夸克 cookie: 没返回新的cookie`);
+            _log.info(`${from}自动更新夸克 cookie: 没返回新的cookie`);
             return
         }
         const cookieObject = COOKIE.parse(resCookie);
-        // console.log(cookieObject);
+        // _log.info(cookieObject);
         if (cookieObject.__puus) {
             const oldCookie = COOKIE.parse(nowCookie);
             const newCookie = COOKIE.stringify({
                 __pus: oldCookie.__pus,
                 __puus: cookieObject.__puus,
             });
-            console.log(`${from}自动更新夸克 cookie: ${newCookie}`);
+            _log.info(`${from}自动更新夸克 cookie: ${newCookie}`);
             ENV.set('quark_cookie', newCookie);
         }
     }
@@ -687,16 +689,16 @@ class QuarkHandler {
                 'referer': 'https://pan.quark.cn/',
                 'Cookie': low_cookie
             };
-            // console.log('low_url:', low_url);
-            // console.log('low_cookie:', low_cookie);
+            // _log.info('low_url:', low_url);
+            // _log.info('low_cookie:', low_cookie);
             const test_result = await this.testSupport(low_url, low_headers);
-            // console.log(test_result);
+            // _log.info(test_result);
             if (!test_result[0]) {
                 try {
                     await this.refreshQuarkCookie('getLiveTranscoding');
                 } catch (e) {
-                    console.log(`getLiveTranscoding:自动刷新夸克cookie失败:${e.message}`);
-                    console.error(e);
+                    _log.info(`getLiveTranscoding:自动刷新夸克cookie失败:${e.message}`);
+                    _log.error(e);
                 }
             }
             return transcoding.data.video_list;
@@ -834,7 +836,7 @@ class QuarkHandler {
                     try {
                         await this.refreshQuarkCookie('getDownload');
                     } catch (e) {
-                        console.log(`getDownload:自动刷新UC cookie失败:${e.message}`)
+                        _log.info(`getDownload:自动刷新UC cookie失败:${e.message}`)
                     }
                     return video
                 }
@@ -880,7 +882,7 @@ class QuarkHandler {
                     try {
                         await this.refreshQuarkCookie('getDownload');
                     } catch (e) {
-                        console.log(`getDownload:自动刷新UC cookie失败:${e.message}`)
+                        _log.info(`getDownload:自动刷新UC cookie失败:${e.message}`)
                     }
                     return video
                 }
@@ -952,14 +954,14 @@ class QuarkHandler {
         //                 "cookie": low_cookie,
         //                 "User-Agent": 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) quark-cloud-drive/2.5.20 Chrome/100.0.4896.160 Electron/18.3.5.4-b478491100 Safari/537.36 Channel/pckk_other_ch'
         //             };
-        //             // console.log('low_url:', low_url);
+        //             // _log.info('low_url:', low_url);
         //             const test_result = await this.testSupport(low_url, low_headers);
-        //             // console.log('test_result:', test_result);
+        //             // _log.info('test_result:', test_result);
         //             if (!test_result[0]) {
         //                 try {
         //                     await this.refreshQuarkCookie('getDownload');
         //                 } catch (e) {
-        //                     console.log(`getDownload:自动刷新UC cookie失败:${e.message}`)
+        //                     _log.info(`getDownload:自动刷新UC cookie失败:${e.message}`)
         //                 }
         //             }
         //             video.push({
@@ -984,14 +986,14 @@ class QuarkHandler {
         //             "cookie": low_cookie,
         //             "User-Agent": 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) quark-cloud-drive/2.5.20 Chrome/100.0.4896.160 Electron/18.3.5.4-b478491100 Safari/537.36 Channel/pckk_other_ch'
         //         };
-        //         // console.log('low_url:', low_url);
+        //         // _log.info('low_url:', low_url);
         //         const test_result = await this.testSupport(low_url, low_headers);
-        //         // console.log('test_result:', test_result);
+        //         // _log.info('test_result:', test_result);
         //         if (!test_result[0]) {
         //             try {
         //                 await this.refreshQuarkCookie('getDownload');
         //             } catch (e) {
-        //                 console.log(`getDownload:自动刷新UC cookie失败:${e.message}`)
+        //                 _log.info(`getDownload:自动刷新UC cookie失败:${e.message}`)
         //             }
         //         }
         //         return down.data[0];
@@ -1090,8 +1092,8 @@ class QuarkHandler {
 
             .catch((err) => {
 
-                // console.error(err);
-                console.error('[testSupport] error:', err.message);
+                // _log.error(err);
+                _log.error('[testSupport] error:', err.message);
 
                 return err.response || {status: 500, data: {}};
 
@@ -1118,7 +1120,7 @@ class QuarkHandler {
             return [isSupport, resp.headers];
 
         } else {
-            console.log('[testSupport] resp.status:', resp.status);
+            _log.info('[testSupport] resp.status:', resp.status);
             return [false, null];
         }
 
@@ -1170,7 +1172,7 @@ class QuarkHandler {
 
         } catch (error) {
 
-            console.error(error);
+            _log.error(error);
 
         }
 
@@ -1309,7 +1311,7 @@ class QuarkHandler {
 
                             const end = Math.min(contentLength - 1, (chunkIdx + 1) * chunkSize - 1);
 
-                            console.log(inReq.id, chunkIdx);
+                            _log.info(inReq.id, chunkIdx);
 
                             const dlResp = await reqs.get(url, {
 
@@ -1345,11 +1347,11 @@ class QuarkHandler {
 
                                     if (stop) {
 
-                                        await fs.promises.rm(dlCache).catch((e) => console.error(e));
+                                        await fs.promises.rm(dlCache).catch((e) => _log.error(e));
 
                                     } else {
 
-                                        await fs.promises.rename(dlCache, dlFile).catch((e) => console.error(e));
+                                        await fs.promises.rename(dlCache, dlFile).catch((e) => _log.error(e));
 
                                         dlFiles[taskId] = dlFile;
 
@@ -1361,9 +1363,9 @@ class QuarkHandler {
 
                                 writer.on('error', async (e) => {
 
-                                    console.error(e);
+                                    _log.error(e);
 
-                                    await fs.promises.rm(dlCache).catch((e1) => console.error(e1));
+                                    await fs.promises.rm(dlCache).catch((e1) => _log.error(e1));
 
                                     resolve(false);
 
@@ -1395,7 +1397,7 @@ class QuarkHandler {
 
                     } catch (error) {
 
-                        console.error(error);
+                        _log.error(error);
 
                         setTimeout(() => {
 
@@ -1468,9 +1470,9 @@ class QuarkHandler {
 
                     await fd.read(buffer, 0, chunkByteEnd - chunkByteStart - readFileStart + 1, readFileStart);
 
-                    await fd.close().catch((e) => console.error(e));
+                    await fd.close().catch((e) => _log.error(e));
 
-                    await fs.promises.rm(dlFile).catch((e) => console.error(e));
+                    await fs.promises.rm(dlFile).catch((e) => _log.error(e));
                     writeMore = stream.write(buffer);
                     if (!writeMore) {
                         stream.once('drain', () => {

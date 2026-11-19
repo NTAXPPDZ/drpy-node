@@ -8,6 +8,8 @@ import CryptoJS from 'crypto-js';
 import {join} from 'path';
 import fs from 'fs';
 import {PassThrough} from 'stream';
+import {createLogger as __createLogger} from './logger.js';
+const _log = __createLogger('utils/chunk');
 
 /**
  * 测试URL是否支持Range请求
@@ -27,7 +29,7 @@ export async function testSupport(url, headers) {
             ),
         })
         .catch((err) => {
-            console.error(err);
+            _log.error(err);
             return err.response || {status: 500, data: {}};
         });
     if (resp && resp.status === 206) {
@@ -83,7 +85,7 @@ function delAllCache(keepKey) {
                 }
         });
     } catch (error) {
-        console.error(error);
+        _log.error(error);
     }
 }
 
@@ -109,7 +111,7 @@ async function chunkStream(inReq, outResp, url, urlKey, headers, option) {
     if (!urlHeadCache[urlKey]) {
         const [isSupport, urlHeader] = await testSupport(url, headers);
         if (!isSupport || !urlHeader['content-length']) {
-            console.log(`[chunkStream] 获取content-length失败，执行重定向到: ${url}`);
+            _log.info(`[chunkStream] 获取content-length失败，执行重定向到: ${url}`);
             outResp.redirect(url);
             return;
         }
@@ -130,7 +132,7 @@ async function chunkStream(inReq, outResp, url, urlKey, headers, option) {
     
     // 处理Range请求
     if (inReq.headers.range) {
-        // console.log(inReq.id, inReq.headers.range);
+        // _log.info(inReq.id, inReq.headers.range);
         const ranges = inReq.headers.range.trim().split(/=|-/);
         if (ranges.length > 2 && ranges[2]) {
             byteEnd = parseInt(ranges[2]);
@@ -147,7 +149,7 @@ async function chunkStream(inReq, outResp, url, urlKey, headers, option) {
     
     // 设置默认选项
     option = option || {chunkSize: 1024 * 256, poolSize: 5, timeout: 1000 * 10};
-    console.log(`[chunkStream] option: `, option);
+    _log.info(`[chunkStream] option: `, option);
     const chunkSize = option.chunkSize;
     const poolSize = option.poolSize;
     const timeout = option.timeout;
@@ -181,7 +183,7 @@ async function chunkStream(inReq, outResp, url, urlKey, headers, option) {
                     if (!exist) {
                         const start = chunkIdx * chunkSize;
                         const end = Math.min(contentLength - 1, (chunkIdx + 1) * chunkSize - 1);
-                        // console.log('[chunkIdx]:', inReq.id, chunkIdx);
+                        // _log.info('[chunkIdx]:', inReq.id, chunkIdx);
                         // 下载分块数据
                         const dlResp = await req.get(url, {
                             responseType: 'stream',
@@ -201,16 +203,16 @@ async function chunkStream(inReq, outResp, url, urlKey, headers, option) {
                         const downloaded = new Promise((resolve) => {
                             writer.on('finish', async () => {
                                 if (stop) {
-                                    await fs.promises.rm(dlCache).catch((e) => console.error(e));
+                                    await fs.promises.rm(dlCache).catch((e) => _log.error(e));
                                 } else {
-                                    await fs.promises.rename(dlCache, dlFile).catch((e) => console.error(e));
+                                    await fs.promises.rename(dlCache, dlFile).catch((e) => _log.error(e));
                                     dlFiles[taskId] = dlFile;
                                 }
                                 resolve(true);
                             });
                             writer.on('error', async (e) => {
-                                console.error(e);
-                                await fs.promises.rm(dlCache).catch((e1) => console.error(e1));
+                                _log.error(e);
+                                await fs.promises.rm(dlCache).catch((e1) => _log.error(e1));
                                 resolve(false);
                             });
                         });
@@ -226,7 +228,7 @@ async function chunkStream(inReq, outResp, url, urlKey, headers, option) {
                     }
                     setTimeout(doDLTask, 5);
                 } catch (error) {
-                    console.error(error);
+                    _log.error(error);
                     setTimeout(() => {
                         doDLTask(chunkIdx);
                     }, 15);
@@ -266,8 +268,8 @@ async function chunkStream(inReq, outResp, url, urlKey, headers, option) {
                 const fd = await fs.promises.open(dlFile, 'r');
                 const buffer = Buffer.alloc(chunkByteEnd - chunkByteStart - readFileStart + 1);
                 await fd.read(buffer, 0, chunkByteEnd - chunkByteStart - readFileStart + 1, readFileStart);
-                await fd.close().catch((e) => console.error(e));
-                await fs.promises.rm(dlFile).catch((e) => console.error(e));
+                await fd.close().catch((e) => _log.error(e));
+                await fs.promises.rm(dlFile).catch((e) => _log.error(e));
                 writeMore = stream.write(buffer);
                 if (!writeMore) {
                     stream.once('drain', () => {

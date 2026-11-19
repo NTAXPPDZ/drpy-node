@@ -9,6 +9,8 @@ import {prepareBinary} from "../utils/binHelper.js";
 import {md5} from "../libs_drpy/crypto-util.js";
 import {fastify} from "../controllers/fastlogger.js";
 import { PROJECT_ROOT } from '../utils/pathHelper.js';
+import {createLogger as __createLogger} from '../utils/logger.js';
+const _log = __createLogger('libs/php');
 // import dotenv from 'dotenv';
 //
 // dotenv.config({ path: path.join(PROJECT_ROOT, '.env.development') });
@@ -86,7 +88,7 @@ const callPhpMethod = async (filePath, methodName, env, ...args) => {
         if (stderr) {
             // Log stderr but don't fail immediately unless stdout is empty or error
             // fastify.log.warn(`PHP Stderr: ${stderr}`);
-            console.error(`PHP Stderr: ${stderr}`);
+            _log.error(`PHP Stderr: ${stderr}`);
         }
 
         const result = json2Object(stdout.trim());
@@ -98,7 +100,7 @@ const callPhpMethod = async (filePath, methodName, env, ...args) => {
         return result;
 
     } catch (error) {
-        console.error(`Error calling PHP method ${methodName}:`, error);
+        _log.error(`Error calling PHP method ${methodName}:`, error);
         throw error;
     }
 };

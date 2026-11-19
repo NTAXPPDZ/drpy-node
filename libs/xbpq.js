@@ -16,6 +16,8 @@
 import {computeHash, deepCopy} from "../utils/utils.js";
 import {readFile} from "fs/promises";
 import {md5} from "../libs_drpy/crypto-util.js";
+import {createLogger as __createLogger} from '../utils/logger.js';
+const _log = __createLogger('libs/xbpq');
 
 // 模块缓存，用于存储已加载的模块以提高性能
 const moduleCache = new Map();
@@ -85,7 +87,7 @@ const init = async function (filePath, env = {}, refresh) {
         moduleCache.set(hashMd5, {moduleObject, hash: fileHash});
         return moduleObject;
     } catch (error) {
-        console.log(`Error in xbpq.init :${filePath}`, error);
+        _log.info(`Error in xbpq.init :${filePath}`, error);
         throw new Error(`Failed to initialize module:${error.message}`);
     }
 }

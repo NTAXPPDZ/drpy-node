@@ -13,6 +13,8 @@ import {
 } from "../libs_drpy/drpyCustom.js";
 import {base64Decode, md5} from "../libs_drpy/crypto-util.js";
 import {deepCopy, urljoin} from "../utils/utils.js";
+import {createLogger as __createLogger} from '../utils/logger.js';
+const _log = __createLogger('libs/drpysParser');
 
 // 注释：原hostHtmlCache已移除，统一使用pageRequestCache管理缓存
 
@@ -59,13 +61,13 @@ class PageRequestCache {
         // 设置自动清理定时器
         const timer = setTimeout(() => {
             this.delete(key);
-            console.log(`[PageRequestCache] 自动清理过期缓存: ${key}`);
+            _log.info(`[PageRequestCache] 自动清理过期缓存: ${key}`);
         }, this.maxAge);
         // 让定时器不阻止进程退出
         if (timer.unref) timer.unref();
         this.timers.set(key, timer);
 
-        console.log(`[PageRequestCache] 缓存已设置: ${key}, 当前缓存数量: ${this.cache.size}`);
+        _log.info(`[PageRequestCache] 缓存已设置: ${key}, 当前缓存数量: ${this.cache.size}`);
     }
 
     delete(key) {
@@ -86,7 +88,7 @@ class PageRequestCache {
         this.cache.clear();
         this.accessOrder = [];
         this.timers.clear();
-        console.log('[PageRequestCache] 已清理所有缓存');
+        _log.info('[PageRequestCache] 已清理所有缓存');
     }
 
     has(key) {
@@ -136,7 +138,7 @@ class PageRequestCache {
             // FIFO策略：移除最早访问的缓存项
             const oldestKey = this.accessOrder[0];
             if (oldestKey) {
-                console.log(`[PageRequestCache] FIFO淘汰缓存: ${oldestKey}`);
+                _log.info(`[PageRequestCache] FIFO淘汰缓存: ${oldestKey}`);
                 this.delete(oldestKey);
             } else {
                 break;
@@ -538,6 +540,7 @@ export async function cateParse(rule, tid, pg, filter, extend) {
         if (url.includes('(') && url.includes(')')) {
             let url_rep = url.match(/.*?\((.*)\)/)[1];
             let cnt_page = url_rep.replaceAll('fypage', pg);
+            // 信任边界：源脚本（spider/dr2）默认可信；vm 不是安全沙箱，无法隔离恶意源。不可信源需进程/容器级隔离，见 doc/drpy-node优化实施-验收记录.md 第四节。
             let cnt_pg = eval(cnt_page);
             url = url.replaceAll(url_rep, cnt_pg).replaceAll('(', '').replaceAll(')', '');
         } else {
@@ -627,6 +630,7 @@ export async function searchParse(rule, wd, quick, pg) {
         if (url.includes('(') && url.includes(')')) {
             let url_rep = url.match(/.*?\((.*)\)/)[1];
             let cnt_page = url_rep.replaceAll('fypage', pg);
+            // 信任边界：源脚本（spider/dr2）默认可信；vm 不是安全沙箱，无法隔离恶意源。不可信源需进程/容器级隔离，见 doc/drpy-node优化实施-验收记录.md 第四节。
             let cnt_pg = eval(cnt_page);
             url = url.replaceAll(url_rep, cnt_pg).replaceAll('(', '').replaceAll(')', '');
         } else {
