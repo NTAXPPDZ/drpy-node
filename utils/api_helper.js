@@ -4,7 +4,9 @@
  * 支持热重载和多种引擎类型的动态选择
  */
 import {watch} from 'fs';
-import path from 'path';
+import {resolveModulePath} from './security/pathGuard.js';
+import {createLogger as __createLogger} from './logger.js';
+const _log = __createLogger('utils/api_helper');
 
 // JSON文件监听器实例
 let jsonWatcher = null;
@@ -33,7 +35,7 @@ export function startJsonWatcher(ENGINES, jsonDir) {
 
                 // 设置新的防抖计时器，避免频繁触发
                 const timer = setTimeout(() => {
-                    console.log(`[HotReload] ${filename} changed, clearing cache...`);
+                    _log.info(`[HotReload] ${filename} changed, clearing cache...`);
                     // 清除drpyS引擎的所有缓存
                     ENGINES.drpyS.clearAllCache();
                     // 清理已完成的计时器
@@ -48,9 +50,9 @@ export function startJsonWatcher(ENGINES, jsonDir) {
         // 允许监听器不阻止进程退出
         if (jsonWatcher.unref) jsonWatcher.unref();
 
-        // console.log(`start json file hot reload success，listening path: ${jsonDir}`);
+        // _log.info(`start json file hot reload success，listening path: ${jsonDir}`);
     } catch (error) {
-        console.error('start json file listening failed with error:', error);
+        _log.error('start json file listening failed with error:', error);
     }
 }
 
@@ -103,8 +105,8 @@ export function getApiEngine(engines, moduleName, query, options) {
             _ext = '.js';
     }
     
-    // 构建完整的模块文件路径
-    const modulePath = path.join(moduleDir, `${moduleName}${_ext}`);
+    // 构建完整的模块文件路径。模块名只允许单段文件名，扩展名由适配器决定。
+    const modulePath = resolveModulePath(moduleDir, moduleName, _ext);
     
     return {
         apiEngine,    // 选中的API引擎

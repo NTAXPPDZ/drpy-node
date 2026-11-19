@@ -62,7 +62,7 @@ const FULL_ENV_TEMPLATE = {
     "enable_system_proxy": "1",
     "play_proxy_mode": "1",
     "play_local_proxy_type": "1",
-    "PROXY_AUTH": "drpys",
+    "PROXY_AUTH": "",
     "enable_doh": "0",
     "allow_forward": "0",
     "allow_ftp_cache_clear": "0",

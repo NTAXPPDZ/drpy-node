@@ -4,11 +4,13 @@
  * 支持Markdown文件渲染为HTML，以及其他静态文件的直接访问
  */
 import path from 'path';
-import {existsSync, readFileSync} from 'fs';
+import {existsSync} from 'fs';
+import {readFile} from 'fs/promises';
 import {getMimeType} from '../utils/mime-type.js';
 import '../utils/marked.min.js'; // Markdown解析库
 // import { marked } from "marked";
 import {validateBasicAuth} from "../utils/api_validate.js";
+import {resolveInside, PathSecurityError} from "../utils/security/pathGuard.js";
 
 /**
  * 文档路由插件
@@ -25,18 +27,11 @@ export default (fastify, options, done) => {
      */
     fastify.get('/docs/*', {preHandler: validateBasicAuth}, async (request, reply) => {
         // 捕获整个路径参数
-        const fullPath = request.params['*']; 
-        console.log(`Request received for path: ${fullPath}`);
+        const fullPath = request.params['*'];
         try {
-            // 将相对路径解析为绝对路径
-            const resolvedPath = path.resolve(options.docsDir, fullPath); 
-
-            // 安全检查：确保resolvedPath在docsDir目录下，防止路径遍历攻击
-            if (!resolvedPath.startsWith(options.docsDir)) {
-                reply.status(403).send(`<h1>403 Forbidden</h1><p>Access to the requested file is forbidden.</p>`);
-                return;
-            }
-            fastify.log.info(`Resolved path: ${resolvedPath}`);
+            // 统一路径守卫：拒绝 ../、绝对路径、百分号编码穿越、符号链接逃逸
+            const resolvedPath = resolveInside(options.docsDir, fullPath);
+            fastify.log.debug({resolvedPath}, 'docs request resolved');
 
             // 检查文件是否存在
             if (!existsSync(resolvedPath)) {
@@ -50,7 +45,7 @@ export default (fastify, options, done) => {
             // 处理Markdown文件
             if (ext === '.md') {
                 // 读取Markdown文件内容
-                const markdownContent = readFileSync(resolvedPath, 'utf8');
+                const markdownContent = await readFile(resolvedPath, 'utf8');
                 // 解析Markdown为HTML，并替换$pwd占位符为实际密码
                 const htmlContent = marked.parse(markdownContent).replaceAll('$pwd', process.env.API_PWD || '');
 
@@ -83,22 +78,26 @@ export default (fastify, options, done) => {
                     // 根据MIME类型决定读取方式
                     if (mimeType.startsWith('text') || mimeType.includes('json') || mimeType.includes('javascript')) {
                         // 文本类型文件以UTF-8编码读取
-                        const fileContent = readFileSync(resolvedPath, 'utf8'); 
+                        const fileContent = await readFile(resolvedPath, 'utf8');
                         reply.type(mimeType).send(fileContent);
                     } else {
                         // 二进制文件直接读取
-                        const fileContent = readFileSync(resolvedPath);
+                        const fileContent = await readFile(resolvedPath);
                         reply.type(mimeType).send(fileContent);
                     }
 
                 } catch (e) {
                     // 文件读取错误处理
-                    console.log(e);
+                    fastify.log.warn({err: e}, '读取文档失败');
                 }
             }
         } catch (error) {
             // 全局错误处理
-            reply.status(500).send(`<h1>500 Internal Server Error</h1><p>Error reading or rendering file: ${error.message}</p>`);
+            if (error instanceof PathSecurityError) {
+                return reply.status(error.statusCode || 403).send(`<h1>403 Forbidden</h1><p>路径不合法</p>`);
+            }
+            fastify.log.error({err: error}, '读取文档失败');
+            reply.status(500).send(`<h1>500 Internal Server Error</h1><p>Error reading or rendering file.</p>`);
         }
     });
 

@@ -1,62 +1,24 @@
 import path from 'path';
 import {readFile} from 'fs/promises';
 import fileHeaderManager from "./fileHeaderManager.js";
+import {isPublicConfigRequest, validateAdminAuth} from "./security/auth.js";
+import {PathSecurityError, resolveInside} from "./security/pathGuard.js";
+import {createLogger as __createLogger} from './logger.js';
+const _log = __createLogger('utils/api_validate');
 
 // 检查是否运行在Vercel环境
 const IS_VERCEL = process.env.VERCEL;
 // 剪切板安全码
 const SECURITY_CODE = process.env.CLIPBOARD_SECURITY_CODE || '';
 
-// 接口basic验证
+// 接口basic验证：管理/受保护路由统一走 fail-closed 鉴权。
+// 保留原有 /config/* 公开路径豁免，避免影响配置读取契约。
 export const validateBasicAuth = (request, reply, done) => {
-    if (!('API_AUTH_NAME' in process.env) && !('API_AUTH_CODE' in process.env)) {
+    if (isPublicConfigRequest(request.url)) {
         done();
-        return
+        return;
     }
-    if (request.url.startsWith('/config/')) {
-        let cf_path = request.url.slice(8).split('?')[0];
-        // console.log(cf_path);
-        if (!['index.js', 'index.js.md5', 'index.config.js', 'index.config.js.md5'].includes(cf_path)) {
-            done();
-            return
-        }
-        console.log(`[validateBasicAuth] 猫配置文件 ${cf_path} 进入Basic登录鉴权`);
-    }
-    // console.log('进入了basic验证');
-    let authHeader = request.headers.authorization;
-
-    // 支持通过 query 参数传递 auth (用于 WebSocket 等无法自定义 Header 的场景)
-    if (!authHeader && request.query && request.query.auth) {
-        authHeader = `Basic ${request.query.auth}`;
-    }
-
-    // 支持通过 sec-websocket-protocol 传递 auth (格式: base64.basic.auth)
-    if (!authHeader && request.headers['sec-websocket-protocol']) {
-        const protocols = request.headers['sec-websocket-protocol'].split(',').map(s => s.trim());
-        const authProtocol = protocols.find(p => p.startsWith('base64.'));
-        if (authProtocol) {
-            authHeader = `Basic ${authProtocol.substring(7)}`;
-        }
-    }
-
-    if (!authHeader) {
-        reply.header('WWW-Authenticate', 'Basic');
-        return reply.code(401).send('Authentication required');
-    }
-
-    const base64Credentials = authHeader.split(' ')[1];
-    const credentials = Buffer.from(base64Credentials, 'base64').toString('utf-8');
-    const [username, password] = credentials.split(':');
-
-    const validUsername = process.env.API_AUTH_NAME || '';
-    const validPassword = process.env.API_AUTH_CODE || '';
-
-    if (username === validUsername && password === validPassword) {
-        done(); // 验证通过，继续处理请求
-    } else {
-        reply.header('WWW-Authenticate', 'Basic');
-        return reply.code(401).send('Invalid credentials');
-    }
+    validateAdminAuth(request, reply, done);
 };
 
 // 接口密码验证
@@ -67,9 +29,9 @@ export const validatePwd = async (request, reply) => {
     }
     if (request.url.startsWith('/config/')) {
         let cf_path = request.url.slice(8).split('?')[0];
-        // console.log(cf_path);
+        // _log.info(cf_path);
         if (['index.js', 'index.js.md5', 'index.config.js', 'index.config.js.md5'].includes(cf_path)) {
-            console.log(`[validatePwd] 猫配置文件 ${cf_path} 跳过接口密码鉴权`);
+            _log.info(`[validatePwd] 猫配置文件 ${cf_path} 跳过接口密码鉴权`);
             return
         }
     }
@@ -88,11 +50,14 @@ export const validatePwd = async (request, reply) => {
 export const validateJs = async (request, reply, dr2Dir) => {
     if (request.url.startsWith('/js/')) {
         try {
-            const fileName = decodeURIComponent(request.url.replace('/js/', '').split('?')[0]);
-            // console.log('fileName', fileName);
-            // 获取文件系统路径
-            const filePath = path.join(dr2Dir, fileName);
-            // console.log('filePath', filePath);
+            let fileName;
+            try {
+                fileName = decodeURIComponent(request.url.replace('/js/', '').split('?')[0]);
+            } catch {
+                return reply.code(400).send('Invalid path encoding');
+            }
+            // 获取文件系统路径，拒绝绝对路径、穿越段和符号链接逃逸
+            const filePath = resolveInside(dr2Dir, fileName);
 
             // 读取文件内容
             let content = await readFile(filePath, 'utf8');
@@ -117,11 +82,16 @@ export const validateJs = async (request, reply, dr2Dir) => {
                 .send(content);
 
         } catch (error) {
+            // 路径校验失败按 403 拒绝，避免继续落到静态文件处理
+            if (error instanceof PathSecurityError) {
+                return reply.code(403).send('Forbidden');
+            }
+
             // 文件不存在时继续后续处理（由fastify-static处理404）
             if (error.code === 'ENOENT') return;
 
             // 其他错误处理
-            console.error(`File processing error: ${error.message}`);
+            _log.error(`File processing error: ${error.message}`);
             return reply.code(500).send('Internal Server Error');
         }
     }
@@ -131,7 +101,7 @@ export const validatHtml = async (request, reply, rootDir) => {
     if (request.url.endsWith('index.html')) {
         try {
             const filePath = path.join(rootDir, request.url);
-            // console.log('filePath', filePath);
+            // _log.info('filePath', filePath);
             // 读取文件内容
             let content = await readFile(filePath, 'utf8');
             content = content.replaceAll('$SECURITY_CODE', SECURITY_CODE);
@@ -145,7 +115,7 @@ export const validatHtml = async (request, reply, rootDir) => {
             if (error.code === 'ENOENT') return;
 
             // 其他错误处理
-            console.error(`File processing error: ${error.message}`);
+            _log.error(`File processing error: ${error.message}`);
             return reply.code(500).send('Internal Server Error');
         }
     }

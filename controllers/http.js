@@ -1,31 +1,132 @@
 /**
- * HTTP请求代理控制器模块
- * 提供HTTP请求代理、AI接口和请求转发功能
+ * HTTP 请求代理控制器模块
+ * 提供 HTTP 请求代理、AI 接口和请求转发功能
+ *
+ * 安全约束（对应项目书 P0-03 / P0-04）：
+ * - /http、/req/* 必须认证（管理员 Basic 或 PROXY_AUTH）；
+ * - 出站目标统一走 EgressPolicy：仅 http/https，DNS 解析后拒绝内网/回环/链路本地/元数据地址；
+ * - 连接阶段使用 guardedLookup 再校验一次，抵御 DNS 重绑定与重定向绕过；
+ * - 限制请求体、响应体、超时与并发；日志脱敏，不打印 Cookie/Authorization。
  * @module http-controller
  */
 
-import {ENV} from '../utils/env.js';
-import {keysToLowerCase} from '../utils/utils.js';
-import createAxiosInstance from "../utils/createAxiosAgent.js";
+import axios from 'axios';
+import http from 'node:http';
+import https from 'node:https';
+import { ENV } from '../utils/env.js';
+import { keysToLowerCase } from '../utils/utils.js';
+import {
+    assertPublicUrl,
+    guardedLookup,
+    EgressPolicyError,
+} from '../utils/security/egressPolicy.js';
+import { authorizeAdminRequest, extractBasicAuthHeader, secureCompare } from '../utils/security/auth.js';
+import { redactHeaders, redactUrl } from '../utils/security/redact.js';
+import { sendError, ApiError, ErrorCodes } from '../utils/runtime/errors.js';
+import { getRequestId } from '../utils/runtime/requestContext.js';
+import { isApiError } from '../utils/runtime/errors.js';
 
 // 最大连接数配置
 const maxSockets = 64;
-// 创建axios实例
-const _axios = createAxiosInstance({maxSockets: maxSockets});
+const MAX_RESPONSE_BYTES = 10 * 1024 * 1024;
+const MAX_REQUEST_BYTES = 2 * 1024 * 1024;
+const PROXY_TIMEOUT_MS = 15000;
+const FORWARD_TIMEOUT_MS = 10000;
+const ALLOWED_FORWARD_METHODS = new Set(['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']);
+// 不向目标站点透传的请求头
+const STRIPPED_FORWARD_HEADERS = new Set([
+    'host',
+    'cookie',
+    'authorization',
+    'proxy-authorization',
+    'connection',
+    'upgrade',
+    'transfer-encoding',
+    'content-length',
+    'keep-alive',
+]);
+
+// 出站专用 axios：agent 带 DNS 校验，避免 DoH/系统代理绕过
+const lookup = guardedLookup({ mode: 'strict' });
+const httpAgent = new http.Agent({ keepAlive: true, maxSockets, lookup });
+const httpsAgent = new https.Agent({ keepAlive: true, maxSockets, lookup, rejectUnauthorized: false });
+const _axios = axios.create({
+    httpAgent,
+    httpsAgent,
+    timeout: PROXY_TIMEOUT_MS,
+    maxContentLength: MAX_RESPONSE_BYTES,
+    maxBodyLength: MAX_REQUEST_BYTES,
+    maxRedirects: 3,
+    validateStatus: () => true,
+});
 
 /**
- * HTTP控制器插件
- * @param {Object} fastify - Fastify实例
+ * 代理类接口的认证：管理员凭据 或 PROXY_AUTH
+ * @returns {{ok: boolean, statusCode: number, code: string, message: string}}
+ */
+function authorizeProxyRequest(request) {
+    const admin = authorizeAdminRequest(request);
+    if (admin.ok) return admin;
+
+    const provided = extractBasicAuthHeader(request);
+    const expected = process.env.PROXY_AUTH || ENV.get('PROXY_AUTH', '');
+    if (provided && expected && secureCompare(provided, expected)) {
+        return { ok: true, statusCode: 200, code: 'OK', message: 'authorized' };
+    }
+    // 管理员凭据未配置时给出 503，提示部署方补配置
+    if (!admin.ok && (admin.code === 'ADMIN_AUTH_NOT_CONFIGURED' || admin.code === 'ADMIN_AUTH_PARTIAL_CONFIG')) {
+        return admin;
+    }
+    return {
+        ok: false,
+        statusCode: 401,
+        code: 'UNAUTHORIZED',
+        message: '该接口需要认证',
+    };
+}
+
+function denyAuth(reply, result) {
+    const status = result.statusCode || 401;
+    if (status === 401) {
+        reply.header('www-authenticate', 'Basic realm="drpy-node"');
+    }
+    return reply.code(status).send({
+        error: result.message,
+        code: result.code,
+        requestId: undefined,
+    });
+}
+
+function normalizeProxyError(error) {
+    if (error instanceof EgressPolicyError) {
+        return new ApiError(ErrorCodes.EGRESS_BLOCKED, error.message, error.statusCode || 403, { expose: true });
+    }
+    if (isApiError(error)) return error;
+    if (error && error.code === 'ECONNABORTED') {
+        return new ApiError(ErrorCodes.TIMEOUT, '上游请求超时', 504, { expose: true });
+    }
+    if (error && (error.code === 'ERR_CANCELED' || error.name === 'AbortError')) {
+        return new ApiError(ErrorCodes.CLIENT_CLOSED, '请求已取消', 499, { expose: true });
+    }
+    return new ApiError(ErrorCodes.UPSTREAM, '上游请求失败', 502, { expose: false, cause: error });
+}
+
+/**
+ * HTTP 控制器插件
+ * @param {Object} fastify - Fastify 实例
  * @param {Object} options - 插件选项
  * @param {Function} done - 完成回调
  */
 export default (fastify, options, done) => {
     /**
-     * HTTP代理请求接口
-     * POST /http - 代理HTTP请求
+     * HTTP 代理请求接口
+     * POST /http - 代理 HTTP 请求
      */
     fastify.post('/http', async (req, reply) => {
-        // 解构请求参数
+        const requestId = getRequestId(req);
+        const auth = authorizeProxyRequest(req);
+        if (!auth.ok) return denyAuth(reply, auth);
+
         const {
             url,
             headers: userHeaders = {},
@@ -33,173 +134,151 @@ export default (fastify, options, done) => {
             method = 'GET',
             data = {},
             responseType,
-            maxRedirects
-        } = req.body;
-        
-        // 验证必需参数
+            maxRedirects,
+        } = req.body || {};
+
         if (!url) {
-            return reply.status(400).send({error: 'Missing required field: url'});
+            return sendError(reply, ApiError.badRequest('Missing required field: url'), { requestId });
         }
-        
-        // 处理请求头，转换为小写
-        const headers = keysToLowerCase({
-            ...userHeaders,
-        });
-        
-        // 添加accept属性防止获取网页源码编码不正确问题
+
+        const headers = keysToLowerCase({ ...userHeaders });
         if (!Object.keys(headers).includes('accept')) {
             headers['accept'] = '*/*';
         }
-        
-        // 记录请求日志
-        console.log(`[httpController] url: ${url} | method: ${method} | params: ${JSON.stringify(params)} | data: ${JSON.stringify(data)} | headers: ${JSON.stringify(headers)}`);
-        
+
+        // 日志只记录脱敏后的目标与方法，不打印请求头与请求体
+        req.log.info({
+            url: redactUrl(url),
+            method,
+            headerKeys: Object.keys(headers),
+            paramCount: Object.keys(params || {}).length,
+        }, 'http proxy request');
+
         try {
-            // 发送HTTP请求
+            await assertPublicUrl(url, { mode: 'strict' });
+
             const response = await _axios({
                 url,
                 method,
                 headers,
                 responseType,
-                maxRedirects,
+                maxRedirects: Number.isFinite(maxRedirects) ? Number(maxRedirects) : 3,
                 params,
                 data,
             });
 
-            // 处理成功响应
-            if (response.status >= 200 && response.status < 400) {
-                reply.status(response.status).send({
-                    status: response.status,
-                    headers: response.headers,
-                    data: response.data,
-                });
-            } else {
-                // 处理非成功状态码
-                reply.status(response.status).send({
-                    status: 200,
-                    headers: response.headers,
-                    data: '',
-                });
-            }
+            return reply.status(response.status).send({
+                status: response.status,
+                headers: redactHeaders(response.headers),
+                data: response.data,
+            });
         } catch (error) {
-            // 处理请求错误
-            // console.error(error);
-            if (error.response) {
-                // 服务器返回了非 2xx 状态码
-                reply.status(error.response.status).send({
-                    error: error.response.data,
-                    headers: error.response.headers,
+            if (error && error.response) {
+                return reply.status(error.response.status).send({
+                    error: typeof error.response.data === 'string'
+                        ? error.response.data.slice(0, 2048)
+                        : error.response.data,
+                    headers: redactHeaders(error.response.headers),
                     status: error.response.status,
                 });
-            } else {
-                // 请求失败或其他错误（网络错误、超时等）
-                reply.status(500).send({error: error.message});
             }
+            return sendError(reply, normalizeProxyError(error), { requestId });
         }
     });
 
     /**
-     * AI聊天接口
-     * GET /ai - 提供AI对话功能
+     * AI 聊天接口
+     * GET /ai - 提供 AI 对话功能
      */
     fastify.get('/ai', async (request, reply) => {
-        // 获取用户输入文本
         const userInput = request.query.text;
 
-        // 验证输入参数
         if (!userInput || userInput.trim() === '') {
-            return reply.status(400).send({error: '请提供文本内容'});
+            return sendError(reply, ApiError.badRequest('请提供文本内容'), { requestId: getRequestId(request) });
         }
 
-        // 构建AI请求参数
         const postFields = {
-            messages: [
-                {role: 'user', content: userInput}
-            ],
-            model: 'gpt-4o-mini-2024-07-18'
+            messages: [{ role: 'user', content: userInput }],
+            model: 'gpt-4o-mini-2024-07-18',
         };
-        // console.log(JSON.stringify(postFields));
+
         try {
-            // 发送AI请求
-            const response = await _axios.post(
+            const response = await axios.post(
                 'https://api.s01s.cn/API/ai_zdy/?type=2',
                 postFields,
                 {
-                    headers: {'Content-Type': 'application/json'},
-                    timeout: 30000, // 30秒超时
-                }
+                    headers: { 'Content-Type': 'application/json' },
+                    timeout: 30000,
+                    maxContentLength: MAX_RESPONSE_BYTES,
+                    validateStatus: () => true,
+                },
             );
-
-            // 返回AI响应结果
-            return reply.send(response.data);
+            return reply.status(response.status).send(response.data);
         } catch (error) {
-            // 处理AI请求错误
-            fastify.log.error('Error:', error.message);
-            return reply.status(500).send({error: '请求失败，请稍后重试'});
+            request.log.error({ err: error }, 'AI 请求失败');
+            return sendError(reply, new ApiError(ErrorCodes.UPSTREAM, '请求失败，请稍后重试', 502, { expose: true }), {
+                requestId: getRequestId(request),
+            });
         }
     });
 
     /**
      * 请求转发接口
-     * ALL /req/* - 转发HTTP请求到指定URL
+     * ALL /req/* - 转发 HTTP 请求到指定 URL
      */
     fastify.all('/req/*', async (request, reply) => {
-        // 非VERCEL环境可在设置中心控制此功能是否开启
-        if (!process.env.VERCEL) {
-            if (ENV.get('allow_forward') !== '1') {
-                return reply.code(403).send({error: 'Forward api is not allowed by owner'});
-            }
+        const requestId = getRequestId(request);
+
+        if (!process.env.VERCEL && ENV.get('allow_forward') !== '1') {
+            return sendError(reply, ApiError.forbidden('Forward api is not allowed by owner'), { requestId });
         }
+
+        const auth = authorizeProxyRequest(request);
+        if (!auth.ok) return denyAuth(reply, auth);
+
+        const method = String(request.method || 'GET').toUpperCase();
+        if (!ALLOWED_FORWARD_METHODS.has(method)) {
+            return sendError(reply, ApiError.badRequest('不支持的转发方法：' + method), { requestId });
+        }
+
+        const targetUrl = request.params['*'];
+        if (!/^https?:\/\//i.test(String(targetUrl || ''))) {
+            return sendError(reply, ApiError.badRequest('Invalid URL. Must start with http:// or https://'), { requestId });
+        }
+
+        request.log.info({ url: redactUrl(targetUrl), method }, 'forward request');
+
         try {
-            // 获取目标URL
-            const targetUrl = request.params['*'];
-            
-            // 验证URL格式
-            if (!/^https?:\/\//.test(targetUrl)) {
-                return reply.code(400).send({error: 'Invalid URL. Must start with http:// or https://'});
+            await assertPublicUrl(targetUrl, { mode: 'strict' });
+
+            const headers = keysToLowerCase({ ...request.headers });
+            for (const name of Object.keys(headers)) {
+                if (STRIPPED_FORWARD_HEADERS.has(name)) delete headers[name];
             }
-            
-            // 记录转发日志
-            console.log(`Forwarding request to: ${targetUrl}`);
-            
-            // 处理请求头
-            const headers = keysToLowerCase({
-                ...request.headers,
-            });
-            delete headers['host']; // 删除host头避免冲突
-            
-            // 添加accept属性防止获取网页源码编码不正确问题
-            if (!Object.keys(headers).includes('accept')) {
-                headers['accept'] = '*/*';
-            }
-            // 发送转发请求
+            if (!headers['accept']) headers['accept'] = '*/*';
+
             const response = await _axios({
-                method: request.method,
+                method,
                 url: targetUrl,
-                headers: headers,
+                headers,
                 data: request.body,
                 params: request.query,
-                timeout: 10000, // 10秒超时
+                timeout: FORWARD_TIMEOUT_MS,
+                maxRedirects: 0,
             });
 
-            // 返回转发响应
-            reply
+            return reply
                 .code(response.status)
-                .headers(response.headers)
+                .headers(redactHeaders(response.headers))
                 .send(response.data);
         } catch (error) {
-            // 处理转发错误
-            console.error('Error forwarding request:', error.message);
-            if (error.response) {
-                // 转发服务器响应错误
-                reply
+            if (error && error.response) {
+                return reply
                     .code(error.response.status)
-                    .headers(error.response.headers)
+                    .headers(redactHeaders(error.response.headers))
                     .send(error.response.data);
-            } else {
-                // 转发请求失败
-                reply.code(500).send({error: `Internal Server Error:${error.message}`});
             }
+            return sendError(reply, normalizeProxyError(error), { requestId });
         }
     });
 

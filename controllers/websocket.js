@@ -5,8 +5,12 @@
  */
 
 import {validateBasicAuth} from "../utils/api_validate.js";
+import {authorizeAdminRequest, extractBasicAuthHeader, secureCompare} from "../utils/security/auth.js";
+import {redactObject} from "../utils/security/redact.js";
+import {ENV} from "../utils/env.js";
 import {toBeijingTime} from "../utils/datetime-format.js";
 import util from 'util';
+import {setLogTap} from '../utils/logger.js';
 
 // WebSocket 客户端管理
 const wsClients = new Set();
@@ -87,7 +91,7 @@ function interceptConsole() {
                             type: 'console',
                             level,
                             timestamp: toBeijingTime(new Date()),
-                            content
+                            content: redactObject(content)
                         });
 
                         broadcastToClients(msg);
@@ -105,10 +109,29 @@ function interceptConsole() {
             console[method] = createInterceptor(method, originalConsole[method]);
         }
     });
+
+    // 统一 logger（utils/logger.js）输出同样广播到 WebSocket 客户端
+    setLogTap((level, text) => {
+        if (wsClients.size === 0) return;
+        setImmediate(() => {
+            try {
+                const msg = JSON.stringify({
+                    type: 'console',
+                    level,
+                    timestamp: toBeijingTime(new Date()),
+                    content: redactObject(text)
+                });
+                broadcastToClients(msg);
+            } catch (error) {
+                originalConsole.error('Log tap formatting error:', error);
+            }
+        });
+    });
 }
 
 // 恢复原始 console
 function restoreConsole() {
+    setLogTap(null);
     // 动态恢复所有console方法
     CONSOLE_METHODS.forEach(method => {
         if (originalConsole[method]) {
@@ -117,8 +140,28 @@ function restoreConsole() {
     });
 }
 
-// 启动 console 拦截
-interceptConsole();
+// console 拦截只在显式开启时生效：生产默认关闭，避免把全部日志广播给未认证客户端
+export const CONSOLE_BROADCAST_ENABLED = process.env.CONSOLE_WS_LOG === '1';
+if (CONSOLE_BROADCAST_ENABLED) {
+    interceptConsole();
+}
+
+/**
+ * WebSocket 连接认证：管理员凭据或 PROXY_AUTH
+ */
+function authorizeWsRequest(req) {
+    const admin = authorizeAdminRequest(req);
+    if (admin.ok) return admin;
+    const provided = extractBasicAuthHeader(req);
+    const expected = process.env.PROXY_AUTH || ENV.get('PROXY_AUTH', '');
+    if (provided && expected && secureCompare(provided, expected)) {
+        return {ok: true, statusCode: 200, code: 'OK', message: 'authorized'};
+    }
+    if (admin.code === 'ADMIN_AUTH_NOT_CONFIGURED' || admin.code === 'ADMIN_AUTH_PARTIAL_CONFIG') {
+        return admin;
+    }
+    return {ok: false, statusCode: 401, code: 'UNAUTHORIZED', message: 'WebSocket 需要认证'};
+}
 
 /**
  * WebSocket控制器插件
@@ -132,10 +175,21 @@ export default (fastify, options, done) => {
      * GET /ws - 建立WebSocket连接
      */
     fastify.get('/ws', {websocket: true}, (socket, req) => {
+        // 认证：管理员 Basic（header 或 sec-websocket-protocol）或 PROXY_AUTH
+        const auth = authorizeWsRequest(req);
+        if (!auth.ok) {
+            originalConsole.warn(`WebSocket 拒绝未认证连接: ${auth.code}`);
+            try {
+                socket.send(JSON.stringify({type: 'error', code: auth.code, message: auth.message}));
+            } catch {
+                // 忽略发送失败
+            }
+            socket.close(1008, auth.message);
+            return;
+        }
+
         const clientId = Date.now() + Math.random();
         originalConsole.log(`WebSocket client connected: ${clientId}`);
-        originalConsole.log('Socket type:', typeof socket);
-        originalConsole.log('Socket has send method:', typeof socket.send);
 
         // 添加到客户端集合
         wsClients.add(socket);
@@ -231,7 +285,7 @@ export default (fastify, options, done) => {
             status: 'ok',
             timestamp: toBeijingTime(new Date()),
             clients: wsClients.size,
-            console_intercepted: true
+            console_intercepted: CONSOLE_BROADCAST_ENABLED
         };
     });
 
