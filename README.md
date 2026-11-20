@@ -85,9 +85,18 @@ Node.js 作为服务端的 drpy 实现，全面升级异步写法。
   - `utils/proxy-util.js` 的 `request.connection.encrypted` → `request.socket.encrypted`（v5 删除 `request.connection`）
   - `utils/runtime/metrics.js`、`utils/runtime/requestContext.js` 的路由标签从 `request.routerPath` 改为 `request.routeOptions.url`（v5 删除 `routerPath`）
   - `controllers/api.js` 删除 `schema.consumes`（v5 schema 白名单外，静默失效）
-- **Node 矩阵固化**：`engines` 为 `>=20 <25`，新增 `.nvmrc`（22），CI 矩阵 20 / 22 / 24。
+- **Node 矩阵固化**：`engines` 为 `>=22 <25`，新增 `.nvmrc`（22），CI 矩阵 22 / 24（Node 20 已 EOL，不再纳入）。
 - **测试与 CI**：`tests/unit/`（egressPolicy、p2、pathGuard、runtime）+ `tests/integration/`（readonly、server）+ `scripts/check-syntax.mjs`，`.github/workflows/ci.yml` 跑语法检查、单测、集成和 `npm audit`。
 - **业务回归脚本**：`scripts/regression-fastify5.mjs`，74 条用例覆盖核心路由、静态前缀、表单解析、管理面认证、业务 API 全链路、三个代理子系统、路由边界和 WebSocket 握手，可用于升级前后的逐条对比。
+
+#### CI 与镜像发布
+
+- **测试脚本跨版本可用**：`package.json` 的 `test` / `test:unit` / `test:integration` 去掉 glob 外层引号，交给 shell 展开成文件列表。原先的 `node --test "tests/unit/**/*.test.mjs"` 在 Node 20 会报 `Could not find`（`--test` 支持 glob 是 Node 21 才加的），而 Node 24 又不接受目录参数，去掉引号后 20 / 22 / 24 都能跑。
+- **Dockerfile 不再克隆上游**：原第 15 行 `RUN git clone https://github.com/hjdhnx/drpy-node.git .` 指向的上游仓库已 404，导致镜像构建从未成功过。改为使用构建上下文（`COPY package.json package-lock.json` → `npm ci` → `COPY . .`），并新增 `.dockerignore` 排除 `node_modules` 与各子项目，构建上下文从 400MB+ 降到几十 MB。
+- **构建/运行基础镜像统一到 Node 22**：builder `node:20-alpine` → `node:22-alpine3.22`，runner `alpine:latest` → `alpine:3.22`（3.22 的 `apk add nodejs` 是 22.x，与 builder ABI 一致；用 `latest` 会装成 Node 24，`node-pty` 原生模块直接失效）。
+- **修掉两个必然失败的 `apk add`**：`php83-cli` 由 `php83` 提供、`php83-json` 由 `php83-common` 提供，两者都不是独立包名，单独安装会整条 `apk add` 失败。
+- **`yarn` 换成 `npm ci`**：仓库没有 `yarn.lock`，`RUN yarn && yarn add puppeteer` 不可复现。puppeteer 属可选能力（`libs/drpyS.js` 里是 `try { await import('../utils/headless-util.js') } catch`），缺失只影响该功能，不再预装。
+- **Release 附件上传修复**：原用已废弃的 `actions/create-release@v1` + `curl --data-binary @file "$upload_url?name=$file"`，`upload_url` 带 `{?name,label}` 模板，返回 400 `Multipart form data required`，而验证步骤不检查状态码，于是每次都“成功”但附件为空。改用 `softprops/action-gh-release@v2`（`fail_on_unmatched_files: true`），并在末尾用 `gh release view --json assets` 真实校验。
 
 ### 1.3 验证结果
 
@@ -127,7 +136,7 @@ node scripts/regression-fastify5.mjs http://127.0.0.1:5757 <管理员账号> <�
 
 ### 环境要求
 
-- Node.js `>=20 <25`，推荐 22 LTS（见 `.nvmrc`）
+- Node.js `>=22 <25`，推荐 22 LTS（见 `.nvmrc`）
 - 需要 Python/PHP 源时另行准备对应运行时，见 [python环境](/docs/pyenv.md)、`spider/php/readme.md`
 
 ### 安装
@@ -165,13 +174,32 @@ curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.35.3/install.sh | bash
 source ~/.bashrc
 nvm install 22
 npm config set registry https://registry.npmmirror.com
-npm i -g pm2 yarn@1.22.19
+npm i -g pm2
 git clone https://github.com/NTAXPPDZ/drpy-node.git
 cd drpy-node
-yarn
-yarn pm2
+npm ci
+npm run pm2
 pm2 logs drpys
 ```
+
+**方案四：Docker**
+
+镜像发布在 GitHub Container Registry（不在 Releases 页面），标签为版本号与 `latest`：
+
+```bash
+docker pull ghcr.io/ntaxppdz/drpy-node:latest
+docker run -d --name drpys -p 5757:5757 -p 57575:57575 \
+  -v $(pwd)/.env:/app/.env ghcr.io/ntaxppdz/drpy-node:latest
+```
+
+本地自行构建：
+
+```bash
+docker build -t drpys:local .
+docker run -d --name drpys -p 5757:5757 -p 57575:57575 drpys:local
+```
+
+镜像基于 `node:22-alpine3.22` 构建、`alpine:3.22` 运行，内含 Node 22、PHP 8.3 与 Python 虚拟环境；首次运行请挂载改好的 `.env`，默认凭据来自 `.env.development`（均为 `CHANGE_ME_*` 占位符）。
 
 ### 启动
 

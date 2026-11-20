@@ -17,8 +17,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # 22 为 LTS 基线（.nvmrc）；20/24 用于兼容矩阵，engines 为 >=20 <25
-        node-version: [20, 22, 24]
+        # 22 为 LTS 基线（.nvmrc）；24 为下一个 LTS 的兼容验证，engines 为 >=22 <25
+        # 说明：Node 20 已于 2026-04 EOL，且其 --test 不支持 glob，故不再纳入矩阵
+        node-version: [22, 24]
     steps:
       - uses: actions/checkout@v4
 

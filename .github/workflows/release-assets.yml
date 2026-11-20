@@ -12,7 +12,7 @@ jobs:
   build-and-release:
     runs-on: ubuntu-latest
     permissions:
-      contents: write  # 需要写入权限来创建发布
+      contents: write  # 需要写入权限来创建发布并上传附件
 
     steps:
       - name: Checkout repository
@@ -40,43 +40,39 @@ jobs:
       - name: Run packageJS-green script
         run: npm run packageJS-green
 
-      - name: Find generated 7z files
+      - name: Collect generated 7z files
         run: |
-          # 在上级目录查找生成的 7z 文件
-          cd ..
-          echo "Generated files:"
-          ls -la *.7z || echo "No 7z files found"
-          # 将文件列表保存到环境变量中
-          echo "FILES=$(ls *.7z 2>/dev/null | tr '\n' ' ')" >> $GITHUB_ENV
+          # packageJS / packageJS-green 把压缩包生成在仓库的上级目录
+          mkdir -p release-artifacts
+          found=0
+          for f in ../*.7z; do
+            [ -e "$f" ] || continue
+            cp "$f" release-artifacts/
+            found=1
+          done
+          if [ "$found" -eq 0 ]; then
+            echo "::error::没有找到任何 7z 产物，打包脚本可能失败"
+            exit 1
+          fi
+          echo "Collected files:"
+          ls -lh release-artifacts/
 
-      - name: Create Release
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create or update release and upload assets
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
-          release_name: Release ${{ github.ref_name }}
+          name: Release ${{ github.ref_name }}
           draft: false
           prerelease: false
+          # 覆盖同名附件，便于失败后重跑；匹配不到产物直接失败，避免假成功
+          overwrite_files: true
+          fail_on_unmatched_files: true
+          files: |
+            release-artifacts/*.7z
 
-      - name: Upload Release Assets
+      - name: Verify upload
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # 切换到上级目录
-          cd ..
-          # 上传所有找到的 7z 文件
-          for file in $FILES; do
-            echo "Uploading $file..."
-            curl -s \
-              -H "Authorization: token $GITHUB_TOKEN" \
-              -H "Content-Type: application/octet-stream" \
-              --data-binary @"$file" \
-              "${{ steps.create_release.outputs.upload_url }}?name=$file"
-            echo "Uploaded $file"
-          done
-
-      - name: Verify upload
-        run: |
-          echo "Uploaded files: $FILES"
+          gh release view "${{ github.ref_name }}" --json tagName,assets \
+            --jq '"\(.tagName): \(.assets | length) asset(s)", (.assets[] | "  - \(.name) \(.size) bytes")'
