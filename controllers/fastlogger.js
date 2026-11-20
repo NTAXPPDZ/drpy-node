@@ -137,11 +137,11 @@ function initializeFastify() {
     }
 
     const _fastify = Fastify({
-        logger: _logger,
+        loggerInstance: _logger,
     });
 
     const _wsApp = Fastify({
-        logger: _logger,
+        loggerInstance: _logger,
     });
 
     // CORS：只对白名单来源回显，且不再使用「通配 + 允许凭据」的非法组合

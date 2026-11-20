@@ -134,7 +134,6 @@ export default (fastify, options, done) => {
         url: '/api/:module',
         preHandler: validatePwd, // 密码验证中间件
         schema: {
-            consumes: ['application/json', 'application/x-www-form-urlencoded'],
             params: {
                 type: 'object',
                 properties: {

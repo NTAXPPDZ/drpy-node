@@ -69,7 +69,8 @@ export function getRequestLogger(fastify, request, extra = {}) {
     const bindings = { ...extra };
     if (request) {
         bindings.reqId = getRequestId(request);
-        if (request.routerPath || request.url) bindings.route = request.routerPath || request.url;
+        const routeTemplate = request.routeOptions && request.routeOptions.url;
+        if (routeTemplate || request.url) bindings.route = routeTemplate || request.url;
         bindings.method = request.method;
     }
     if (base && typeof base.child === 'function') return base.child(bindings);
