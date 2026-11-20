@@ -69,7 +69,10 @@ export default (fastify, options, done) => {
     fastify.get('/webdav/health', async (request, reply) => {
         _log.info(`[webdavController] Health check request`);
 
-        const healthData = createHealthResponse(webdavClients, fileCache, {
+        const healthData = createHealthResponse('WebDAV Proxy', webdavClients, fileCache);
+
+        return reply.send({
+            ...healthData,
             features: [
                 'WebDAV file direct link access',
                 'Smart cache management with auto-cleanup',
@@ -78,8 +81,6 @@ export default (fastify, options, done) => {
                 'Range request support for large files'
             ]
         });
-
-        return reply.send(healthData);
     });
 
     /**

@@ -73,6 +73,7 @@ Node.js 作为服务端的 drpy 实现，全面升级异步写法。
 #### 结构重构（P2）
 
 - **代理去重**：`utils/proxy/m3u8Rewriter.js` 统一逐行改写，补上 `URI="..."` 标签属性（`#EXT-X-KEY`、`#EXT-X-MAP`、`#EXT-X-MEDIA`）的改写，修正加密 HLS 密钥地址暴露原始地址的缺陷；`utils/proxy/streamRelay.js` 作为上游透传统一入口；`utils/proxy/rangeStreamer.js` 修正 `bytes=0-0` 被误判 416 的边界。
+- **健康检查参数修复**：`/m3u8-proxy/health`、`/ftp/health`、`/webdav/health` 三个端点的 `createHealthResponse()` 调用参数错位（服务名位置收到缓存对象，`JSON.stringify` 抛循环引用错误导致 500）。修正 `controllers/m3u8-proxy.js`、`controllers/ftp-proxy.js`、`controllers/webdav-proxy.js`、`controllers/file-proxy.js`、`controllers/unified-proxy.js` 五个调用点，`features` 改由响应对象合并；`service` 字段与 `cache.requests/additional.stats` 现在都正确输出。
 - **备份单服务**：`utils/backup/backupService.js`，`/admin/backup` 与 `/admin/restore` 均改为薄适配层。
 - **源目录统一索引**：`utils/sources/sourceIndex.js` 按目录 mtime 缓存，`controllers/config.js` 六处 `readdirSync` 与 `sourcesController` 四处 `readdir` 收敛为统一入口。
 - **统一日志**：`utils/logger.js` 的 `createLogger(module)` 输出带 `module` 字段的 Pino JSON 行，`redactText` 处理文本脱敏，`setLogTap()` 作为 WebSocket 广播订阅点；一次性 codemod 迁移 55 个文件、546 处 `console.*`。
@@ -126,7 +127,6 @@ node scripts/regression-fastify5.mjs http://127.0.0.1:5757 <管理员账号> <�
 2. **不改外部契约**。URL、参数名、成功响应结构保持原样，错误响应只在原有 `error`/`message` 上追加 `code`、`requestId`。
 3. **不重写引擎和源生态**，不改变 Python/PHP/CatVod 兼容面，不迁移 TypeScript，不替换 Fastify，不引入 Redis/Kubernetes。
 4. **已知遗留问题**（非本次引入，`main` 分支同样存在）：
-   - `/m3u8-proxy/health` 与 `/ftp/health` 返回 500。根因是 `controllers/m3u8-proxy.js` 与 `controllers/ftp-proxy.js` 调用 `utils/proxy-util.js` 的 `createHealthResponse(serviceName, requestCache, additionalCache)` 时参数错位，导致服务名位置收到缓存对象，`JSON.stringify` 抛循环引用错误。待修复。
    - `mediaProxy` 单线程路径的 `Content-Range` 总长取自上游 `content-length`，上游已返回 Range 子响应时不准。
    - 文本日志脱敏为模式匹配，覆盖常见 `key=value` 与 Basic 形式，不能保证穷尽。
 
@@ -469,7 +469,6 @@ Fastify、`@fastify/static`、`@fastify/websocket`、`@fastify/formbody`、axios
 1. Windows 上直接运行 `index.js` 可能日志中文乱码，建议用 `yarn dev` 或 `npm run dev-win`。
 2. `pinyin` 库依赖的 `nodejieba` 已停止维护，无法安装。
 3. `new Promise` 内抛出的错误无法被外部 `try/catch` 捕获，可能导致进程崩溃。
-4. `/m3u8-proxy/health`、`/ftp/health` 返回 500，根因为 `createHealthResponse` 调用参数错位（上游同样存在），待修复。
 
 ---
 

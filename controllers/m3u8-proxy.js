@@ -64,7 +64,10 @@ export default (fastify, options, done) => {
     fastify.get('/m3u8-proxy/health', async (request, reply) => {
         setCorsHeaders(reply);
         
-        const healthData = createHealthResponse(requestCache, m3u8Cache, {
+        const healthData = createHealthResponse('M3U8 Stream Proxy', requestCache, m3u8Cache);
+
+        reply.send({
+            ...healthData,
             features: [
                 'M3U8 playlist proxying with link rewriting',
                 'TS segment proxying with authentication',
@@ -73,8 +76,6 @@ export default (fastify, options, done) => {
                 'Authentication support for protected streams'
             ]
         });
-        
-        reply.send(healthData);
     });
 
     /**
