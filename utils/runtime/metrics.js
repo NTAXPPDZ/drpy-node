@@ -136,7 +136,7 @@ export const upstreamDuration = new Histogram(
 
 /** 规范化路由标签：未匹配路由统一为 unmatched。 */
 export function routeLabel(request) {
-    const template = (request.routeOptions && request.routeOptions.url) || request.routerPath;
+    const template = request.routeOptions && request.routeOptions.url;
     return template || 'unmatched';
 }
 

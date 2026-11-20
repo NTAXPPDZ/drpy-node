@@ -461,8 +461,8 @@ export function getRemoteContent(url, headers) {
  * @returns {string} 基础 URL
  */
 export function getProxyBaseUrl(request) {
-    const protocol = request.headers['x-forwarded-proto'] || 
-                    (request.connection.encrypted ? 'https' : 'http');
+    const protocol = request.headers['x-forwarded-proto'] ||
+                    ((request.socket && request.socket.encrypted) ? 'https' : 'http');
     const host = request.headers['x-forwarded-host'] || 
                 request.headers.host || 
                 'localhost:3001';
