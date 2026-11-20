@@ -2,6 +2,7 @@
 
 [![zread](https://img.shields.io/badge/Ask_Zread-_.svg?style=plastic&color=00b0aa&labelColor=000000&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB3aWR0aD0iMTYiIGhlaWdodD0iMTYiIHZpZXdCb3g9IjAgMCAxNiAxNiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTQuOTYxNTYgMS42MDAxSDIuMjQxNTZDMS44ODgxIDEuNjAwMSAxLjYwMTU2IDEuODg2NjQgMS42MDE1NiAyLjI0MDFWNC45NjAxQzEuNjAxNTYgNS4zMTM1NiAxLjg4ODEgNS42MDAxIDIuMjQxNTYgNS42MDAxSDQuOTYxNTZDNS4zMTUwMiA1LjYwMDEgNS42MDE1NiA1LjMxMzU2IDUuNjAxNTYgNC45NjAxVjIuMjQwMUM1LjYwMTU2IDEuODg2NjQgNS4zMTUwMiAxLjYwMDEgNC45NjE1NiAxLjYwMDFaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik00Ljk2MTU2IDEwLjM5OTlIMi4yNDE1NkMxLjg4ODEgMTAuMzk5OSAxLjYwMTU2IDEwLjY4NjQgMS42MDE1NiAxMS4wMzk5VjEzLjc1OTlDMS42MDE1NiAxNC4xMTM0IDEuODg4MSAxNC4zOTk5IDIuMjQxNTYgMTQuMzk5OUg0Ljk2MTU2QzUuMzE1MDIgMTQuMzk5OSA1LjYwMTU2IDE0LjExMzQgNS42MDE1NiAxMy43NTk5VjExLjAzOTlDNS42MDE1NiAxMC42ODY0IDUuMzE1MDIgMTAuMzk5OSA0Ljk2MTU2IDEwLjM5OTlaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik0xMy43NTg0IDEuNjAwMUgxMS4wMzg0QzEwLjY4NSAxLjYwMDEgMTAuMzk4NCAxLjg4NjY0IDEwLjM5ODQgMi4yNDAxVjQuOTYwMUMxMC4zOTg0IDUuMzEzNTYgMTAuNjg1IDUuNjAwMSAxMS4wMzg0IDUuNjAwMUgxMy43NTg0QzE0LjExMTkgNS42MDAxIDE0LjM5ODQgNS4zMTM1NiAxNC4zOTg0IDQuOTYwMVYyLjI0MDFDMTQuMzk4NCAxLjg4NjY0IDE0LjExMTkgMS42MDAxIDEzLjc1ODQgMS42MDAxWiIgZmlsbD0iI2ZmZiIvPgo8cGF0aCBkPSJNNCAxMkwxMiA0TDQgMTJaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik00IDEyTDEyIDQiIHN0cm9rZT0iI2ZmZiIgc3Ryb2tlLXdpZHRoPSIxLjUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPgo8L3N2Zz4K&logoColor=ffffff)](https://zread.ai/hjdhnx/drpy-node)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/hjdhnx/drpy-node)
+[![](https://img.shields.io/badge/powered_by-dsh-4D6BFE?style=flat-square&logo=deepseek&logoColor=white)](https://github.com/deepseek-ai/deepseek-harness)
 
 ![drpyS](./public/images/drpys.png)
 
@@ -324,9 +325,17 @@ npm run pm2        # pm2 常驻，进程名 drpys
 
 Fastify、`@fastify/static`、`@fastify/websocket`、`@fastify/formbody`、axios、pino、lru-cache、cheerio、better-sqlite3 等依赖的作者与维护者。
 
+### 开发工具：[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)
+
+本分支的代码级治理、Fastify 5 迁移评估与实施、74 条业务回归脚本、以及 v4/v5 逐条行为对比，是在 **DeepSeek Harness（DSH）** 这个 AI 编码环境下完成的：读代码、查依赖、跑测试、起服务、比对响应、写文档，全程由它在这个仓库里实操。
+
+工具再好也只是工具——所有决策、验收标准和"这版能不能发"的判断仍然由人来做。但该记的功要记：**没有它，这套重构和回归不可能在两三天内落地。**
+
+---
+
 ### 本分支的优化工作
 
-代码级治理、安全加固、运行时重构、Fastify 5 升级与测试体系，由本仓库维护者（xppdz）在道长原有架构上完成。再次强调：**这些是增量改进，不是重写，功劳的大头在上游和社区。**
+代码级治理、安全加固、运行时重构、Fastify 5 升级与测试体系，由本仓库维护者（xppdz）在道长原有架构上完成，开发过程使用 DeepSeek Harness 辅助。再次强调：**这些是增量改进，不是重写，功劳的大头在上游和社区。**
 
 ---
 
@@ -400,7 +409,18 @@ Fastify、`@fastify/static`、`@fastify/websocket`、`@fastify/formbody`、axios
 
 ## 七、更新记录
 
-### 优化分支
+### 本分支版本
+
+当前版本 **V1.5.0**（2026-11-20）。
+
+主版本号规则与上游保持一致（`V主.次.修订`），`package.json` 里的 `version` 字段与本节同步，后台管理「系统信息」读取的就是这个值。
+
+| 版本 | 内容 |
+| --- | --- |
+| **V1.5.0** | Fastify 4 → 5 全量升级（含 `@fastify/static` / `@fastify/websocket` / `@fastify/formbody` 配套主版本）；安全止血、运行时重构、结构治理、测试与 CI 体系；74 条业务回归与 v4 逐条对比一致。 |
+| V1.4.3 | 上游基线版本（2026-03-22），本分支的起点。 |
+
+### 优化分支提交
 
 | 提交 | 内容 |
 | --- | --- |
@@ -414,7 +434,7 @@ Fastify、`@fastify/static`、`@fastify/websocket`、`@fastify/formbody`、axios
 
 ### 上游版本
 
-当前版本 **V1.4.3**（2026-03-22）。完整历史见 [更新记录](docs/updateRecord.md)。
+上游最新版本为 **V1.4.3**（2026-03-22），本分支已在其基础上推进到 V1.5.0。上游完整历史见 [更新记录](docs/updateRecord.md)。
 
 ### 已知问题
 
