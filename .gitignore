@@ -170,3 +170,6 @@ public/index.html
 
 # 代码图谱工具缓存
 .codegraph/
+
+# AI 助手项目级约束（含本机环境与凭据，不纳入版本控制）
+/AGENTS.md
