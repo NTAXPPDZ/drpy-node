@@ -5,9 +5,9 @@
   "type": "module",
   "scripts": {
     "build": "node index.js",
-    "test": "node --test \"tests/unit/**/*.test.mjs\" \"tests/integration/**/*.test.mjs\"",
-    "test:unit": "node --test \"tests/unit/**/*.test.mjs\"",
-    "test:integration": "node --test \"tests/integration/**/*.test.mjs\"",
+    "test": "node --test tests/unit/*.test.mjs tests/integration/*.test.mjs",
+    "test:unit": "node --test tests/unit/*.test.mjs",
+    "test:integration": "node --test tests/integration/*.test.mjs",
     "check:syntax": "node scripts/check-syntax.mjs",
     "dev": "node index.js",
     "dev-win": "chcp 65001 && node --trace-deprecation index.js",
@@ -36,7 +36,7 @@
     "admin:install": "cd drpy-node-admin && npm install"
   },
   "engines": {
-    "node": ">=20 <25"
+    "node": ">=22 <25"
   },
   "repository": "https://github.com/hjdhnx/drpy-node.git",
   "author": "晚风拂柳颜 <434857005@qq.com>",

@@ -158,6 +158,7 @@ dist
 /data/temp/
 /scripts/mjs/index.db
 /scripts/test/rsa-test.json
+/rsa-test.json
 /apps/salary/
 /jx/_30wmv.js
 .DS_Store
