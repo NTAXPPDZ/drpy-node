@@ -1,5 +1,15 @@
 # drpyS更新记录
 
+### 20261121
+
+更新至V1.5.1
+
+1. 修正 /m3u8-proxy/health、/ftp/health、/webdav/health、/file-proxy/health、/unified-proxy/health 五个健康检查端点因 createHealthResponse 参数错位导致的 500。
+2. 修复 CI：Node 20 的 --test 不支持 glob，测试脚本去掉 glob 引号；engines 提升至 >=22 <25，矩阵调整为 22 / 24。
+3. 修复 Docker 镜像构建：Dockerfile 不再 clone 已失效的上游仓库，改用构建上下文；新增 .dockerignore；去掉不存在的 php83-cli / php83-json 包名。
+4. 修复 Release 附件上传：改用 softprops/action-gh-release@v2，并在最后真实校验资产。
+5. 拆分运行时首页为 docs/home.md，README 保持完整供 GitHub 阅读；首页置顶三条配置接口链接。
+
 ### 20260322
 
 更新至V1.4.3

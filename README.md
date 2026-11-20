@@ -451,13 +451,14 @@ Fastify、`@fastify/static`、`@fastify/websocket`、`@fastify/formbody`、axios
 
 ### 本分支版本
 
-当前版本 **V1.5.0**（2026-11-20）。
+当前版本 **V1.5.1**（2026-11-21）。
 
 主版本号规则与上游保持一致（`V主.次.修订`），`package.json` 里的 `version` 字段与本节同步，后台管理「系统信息」读取的就是这个值。
 
 | 版本 | 内容 |
 | --- | --- |
-| **V1.5.0** | Fastify 4 → 5 全量升级（含 `@fastify/static` / `@fastify/websocket` / `@fastify/formbody` 配套主版本）；安全止血、运行时重构、结构治理、测试与 CI 体系；74 条业务回归与 v4 逐条对比一致。 |
+| **V1.5.1** | 修正五个代理健康检查端点的 500（`createHealthResponse` 参数错位）；修复 CI 在 Node 20 上的测试失败、Docker 镜像构建与 Release 附件上传；拆分运行时首页为 `docs/home.md`。 |
+| V1.5.0 | Fastify 4 → 5 全量升级（含 `@fastify/static` / `@fastify/websocket` / `@fastify/formbody` 配套主版本）；安全止血、运行时重构、结构治理、测试与 CI 体系；74 条业务回归与 v4 逐条对比一致。 |
 | V1.4.3 | 上游基线版本（2026-03-22），本分支的起点。 |
 
 ### 优化分支提交
@@ -471,10 +472,15 @@ Fastify、`@fastify/static`、`@fastify/websocket`、`@fastify/formbody`、axios
 | `f53c023` | fix(admin): 插件/订阅/系统/终端管理路由接入只读拦截与统一日志 |
 | `a36c9af` | chore(deps): 升级 Fastify 4 → 5，适配 v5 破坏性变更 |
 | `7735918` | test: 新增 Fastify 5 升级业务回归脚本 |
+| `a10d213` | fix(proxy): 修正 createHealthResponse 参数错位导致的健康检查 500 |
+| `91d0224` | fix(ci,docker): 修复 CI Node 20 测试失败与镜像构建、Release 附件上传 |
+| `70195c3` | feat: 拆分运行时首页为 docs/home.md，README 保持完整供 GitHub 阅读 |
+| `a9b9c3b` | docs: 首页置顶配置接口三条链接（动态本地/动态外网局域网/订阅过滤） |
+| `dc16928` | chore: gitignore 排除 AI 助手项目级约束文件 AGENTS.md |
 
 ### 上游版本
 
-上游最新版本为 **V1.4.3**（2026-03-22），本分支已在其基础上推进到 V1.5.0。上游完整历史见 [更新记录](docs/updateRecord.md)。
+上游最新版本为 **V1.4.3**（2026-03-22），本分支已在其基础上推进到 V1.5.1。上游完整历史见 [更新记录](docs/updateRecord.md)。
 
 ### 已知问题
 

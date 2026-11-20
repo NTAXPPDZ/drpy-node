@@ -2,7 +2,7 @@
 
 Node.js 作为服务端的 drpy 实现，全面升级异步写法。
 
-本仓库是 [hjdhnx/drpy-node](https://github.com/hjdhnx/drpy-node) 的优化分支（当前 **V1.5.0**）：Fastify 5、Node 22 基线、安全止血与可回归性建设。对外接口契约不变。
+本仓库是 [hjdhnx/drpy-node](https://github.com/hjdhnx/drpy-node) 的优化分支（当前 **V1.5.1**）：Fastify 5、Node 22 基线、安全止血与可回归性建设。对外接口契约不变。
 
 > ⚠️ **仅供学习研究交流，禁止任何商业用途。完整免责条款见 [README 免责协议](https://github.com/NTAXPPDZ/drpy-node/blob/main/README.md#五免责协议)。**
 
