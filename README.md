@@ -75,6 +75,7 @@ Node.js 作为服务端的 drpy 实现，全面升级异步写法。
 - **代理去重**：`utils/proxy/m3u8Rewriter.js` 统一逐行改写，补上 `URI="..."` 标签属性（`#EXT-X-KEY`、`#EXT-X-MAP`、`#EXT-X-MEDIA`）的改写，修正加密 HLS 密钥地址暴露原始地址的缺陷；`utils/proxy/streamRelay.js` 作为上游透传统一入口；`utils/proxy/rangeStreamer.js` 修正 `bytes=0-0` 被误判 416 的边界。
 - **健康检查参数修复**：`/m3u8-proxy/health`、`/ftp/health`、`/webdav/health` 三个端点的 `createHealthResponse()` 调用参数错位（服务名位置收到缓存对象，`JSON.stringify` 抛循环引用错误导致 500）。修正 `controllers/m3u8-proxy.js`、`controllers/ftp-proxy.js`、`controllers/webdav-proxy.js`、`controllers/file-proxy.js`、`controllers/unified-proxy.js` 五个调用点，`features` 改由响应对象合并；`service` 字段与 `cache.requests/additional.stats` 现在都正确输出。
 - **备份单服务**：`utils/backup/backupService.js`，`/admin/backup` 与 `/admin/restore` 均改为薄适配层。
+- **运行时首页拆分**：原先 `/` 直接把这份 README 渲染成 HTML，README 变长后手机打开体验很差。现在 `/` 优先渲染 `docs/home.md`（精简导航页：快速开始、接口速查、插件应用、文档索引），找不到才回退 README；渲染结果按 mtime+size 缓存并写 `public/index.html`，同时补了基础排版样式（表格边框、代码块、移动端断点）。
 - **源目录统一索引**：`utils/sources/sourceIndex.js` 按目录 mtime 缓存，`controllers/config.js` 六处 `readdirSync` 与 `sourcesController` 四处 `readdir` 收敛为统一入口。
 - **统一日志**：`utils/logger.js` 的 `createLogger(module)` 输出带 `module` 字段的 Pino JSON 行，`redactText` 处理文本脱敏，`setLogTap()` 作为 WebSocket 广播订阅点；一次性 codemod 迁移 55 个文件、546 处 `console.*`。
 - **指标扩展**：`utils/runtime/metrics.js` 新增 `drpy_http_requests_total`、`drpy_http_request_duration_seconds`（直方图，5ms–30s 桶）、`drpy_upstream_requests_total`、`drpy_upstream_duration_seconds`；每指标最多 500 条时间序列，路由标签使用 Fastify 路由模板而非真实 URL 以控制基数。
@@ -210,6 +211,8 @@ npm run pm2        # pm2 常驻，进程名 drpys
 
 默认端口 `5757`，WebSocket 端口 `57575`，可用 `PORT` / `WS_PORT` 覆盖。
 
+浏览器打开 `http://<ip>:5757` 看到的是运行时首页 [`docs/home.md`](docs/home.md)——一份精简导航页（快速开始、接口速查、插件应用、文档索引），不是这份 README。README 保持完整供 GitHub 阅读；要改运行时首页直接编辑 `docs/home.md`，刷新即生效（渲染结果按 mtime 缓存）。`docs/home.md` 不存在时回退渲染 `README.md`。
+
 ### 首次启动必改
 
 以下默认值必须先改，否则管理面等于裸奔：
@@ -258,6 +261,7 @@ npm run pm2        # pm2 常驻，进程名 drpys
 
 ### 文档
 
+- [运行时首页（ip:5757 显示内容）](docs/home.md)
 - [接口文档](docs/apidoc.md) | [接口列表如定时任务](docs/apiList.md)
 - [DS项目环境变量说明](docs/envdoc.md) | [python环境](docs/pyenv.md)
 - [drpyS源属性说明](docs/ruleAttr.md) | [drpy2写源简述](docs/ruleDesc.md)

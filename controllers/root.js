@@ -10,29 +10,45 @@ import {toBeijingTime} from "../utils/datetime-format.js"
 
 export default (fastify, options, done) => {
     // 添加 / 接口
-    // README 渲染结果缓存：key = mtimeMs:size，避免每个请求都 readdir + 读文件 + marked 渲染 + 写盘
+    // 首页渲染结果缓存：key = mtimeMs:size，避免每个请求都 readdir + 读文件 + marked 渲染 + 写盘
     let readmeRenderCache = {key: null, html: null};
-    let readmePathCache = {dir: null, path: null, checkedAt: 0};
+    let readmePathCache = {dir: null, path: null, isHome: false, checkedAt: 0};
 
+    /**
+     * 解析首页 Markdown 路径。
+     * 优先 docs/home.md（运行时首页，精简导航页），其次根目录 home.md，最后回退 README.md。
+     * README.md 保持完整给 GitHub 展示，不再直接作为 ip:port 的首页。
+     */
     function resolveReadmePath() {
         const now = Date.now();
         if (readmePathCache.dir === options.rootDir && now - readmePathCache.checkedAt < 30_000) {
-            return readmePathCache.path;
+            return readmePathCache;
         }
         let found = null;
-        for (const file of readdirSync(options.rootDir)) {
-            if (/^readme\.md$/i.test(file)) {
-                found = path.join(options.rootDir, file);
+        let isHome = false;
+        for (const candidate of [path.join(options.docsDir, 'home.md'), path.join(options.rootDir, 'home.md')]) {
+            if (existsSync(candidate)) {
+                found = candidate;
+                isHome = true;
                 break;
             }
         }
-        readmePathCache = {dir: options.rootDir, path: found, checkedAt: now};
-        return found;
+        if (!found) {
+            for (const file of readdirSync(options.rootDir)) {
+                if (/^readme\.md$/i.test(file)) {
+                    found = path.join(options.rootDir, file);
+                    break;
+                }
+            }
+        }
+        readmePathCache = {dir: options.rootDir, path: found, isHome, checkedAt: now};
+        return readmePathCache;
     }
 
     fastify.get('/', {preHandler: validateBasicAuth}, async (request, reply) => {
         const indexHtmlPath = path.join(options.rootDir, 'public/index.html');
-        const readmePath = resolveReadmePath();
+        const resolved = resolveReadmePath();
+        const readmePath = resolved.path;
 
         if (!readmePath) {
             if (process.env.VERCEL) {
@@ -53,7 +69,19 @@ export default (fastify, options, done) => {
                 '<head>',
                 '    <meta charset="UTF-8">',
                 '    <meta name="viewport" content="width=device-width, initial-scale=1.0">',
-                '    <title>drpyS-README</title>',
+                '    <title>drpyS</title>',
+                '    <style>',
+                '        body { font-family: -apple-system, "Segoe UI", Arial, sans-serif; line-height: 1.7; max-width: 1100px; margin: 0 auto; padding: 20px; color: #222; }',
+                '        table { border-collapse: collapse; width: 100%; margin: 12px 0; }',
+                '        th, td { border: 1px solid #ddd; padding: 6px 10px; text-align: left; vertical-align: top; }',
+                '        th { background: #f5f5f5; }',
+                '        code { background: #f4f4f4; padding: 1px 4px; border-radius: 3px; font-family: monospace; }',
+                '        pre { background: #f4f4f4; padding: 10px; border-radius: 5px; overflow-x: auto; }',
+                '        pre code { background: none; padding: 0; }',
+                '        img { max-width: 100%; }',
+                '        hr { border: none; border-top: 1px solid #eee; margin: 24px 0; }',
+                '        @media (max-width: 640px) { body { padding: 12px; } th, td { padding: 4px 6px; font-size: 14px; } }',
+                '    </style>',
                 '</head>',
                 '<body>',
                 `    ${htmlContent}`,
