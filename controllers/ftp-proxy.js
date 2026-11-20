@@ -82,7 +82,10 @@ export default (fastify, options, done) => {
     fastify.get('/ftp/health', async (request, reply) => {
         _log.info(`[ftpController] Health check request`);
 
-        const healthData = createHealthResponse(ftpClients, fileCache, {
+        const healthData = createHealthResponse('FTP Proxy', ftpClients, fileCache);
+
+        return reply.send({
+            ...healthData,
             features: [
                 'FTP file direct link access',
                 'Smart cache management with auto-cleanup',
@@ -91,8 +94,6 @@ export default (fastify, options, done) => {
                 'Range request support for large files'
             ]
         });
-
-        return reply.send(healthData);
     });
 
     /**

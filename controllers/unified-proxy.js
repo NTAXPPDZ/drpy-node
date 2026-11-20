@@ -282,8 +282,8 @@ export default (fastify, options, done) => {
 
         setCorsHeaders(reply);
         
-        const healthData = createHealthResponse(requestCache);
-        
+        const healthData = createHealthResponse('Unified Smart Proxy', requestCache);
+
         return reply.send({
             ...healthData,
             service: 'Unified Smart Proxy',

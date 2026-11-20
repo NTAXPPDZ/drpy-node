@@ -38,8 +38,8 @@ export default (fastify, options, done) => {
         
         setCorsHeaders(reply);
         
-        const healthData = createHealthResponse(requestCache);
-        
+        const healthData = createHealthResponse('Remote File Proxy', requestCache);
+
         return reply.send({
             ...healthData,
             service: 'Remote File Proxy',
