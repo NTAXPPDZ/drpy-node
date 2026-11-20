@@ -259,13 +259,21 @@ npm run pm2        # pm2 常驻，进程名 drpys
 - [DS源仓库-去中心化](http://183.87.133.60:5678/)
 - [DS本地包下载中心](/admin/download)
 
+### 配置接口
+
+实际给影视壳子 / 客户端用的三条链接（`pwd` 用你自己的 `API_PWD`）：
+
+- [本地配置接口-动态本地](/config?healthy=1&pwd=$pwd) —— 接口地址固定为 `http://127.0.0.1:<PORT>`，本机自用
+- [本地配置接口-动态外网/局域网](/config/1?healthy=1&pwd=$pwd) —— 接口地址跟随访问域名，手机/外网/反代场景用这条
+- [其他配置接口-订阅过滤](docs/sub.md) —— 按分类与关键词过滤订阅内容
+
 ### 文档
 
 - [运行时首页（ip:5757 显示内容）](docs/home.md)
 - [接口文档](docs/apidoc.md) | [接口列表如定时任务](docs/apiList.md)
 - [DS项目环境变量说明](docs/envdoc.md) | [python环境](docs/pyenv.md)
 - [drpyS源属性说明](docs/ruleAttr.md) | [drpy2写源简述](docs/ruleDesc.md)
-- [其他配置接口-订阅过滤](docs/sub.md) | [关姐算法搭建说明](docs/suanfa.md)
+- [订阅过滤说明](docs/sub.md) | [关姐算法搭建说明](docs/suanfa.md)
 - [猫源调试教程](docs/catDebug.md) | [接口压测教程](docs/httpTest.md)
 - [webdav使用教程](docs/webdav.md) | [puppeteer使用教程](docs/pupInstall.md)
 - [crypto-js-wasm使用教程](docs/crypto-js-wasm/readme-CN.md)

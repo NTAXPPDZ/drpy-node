@@ -8,6 +8,24 @@ Node.js 作为服务端的 drpy 实现，全面升级异步写法。
 
 ---
 
+## 配置接口
+
+把下面任意一条粘贴到影视壳子 / 客户端里即可使用。链接里的 `pwd` 已自动填好当前 `API_PWD`。
+
+| 接口 | 链接 | 用途 |
+| --- | --- | --- |
+| 本地配置接口-动态本地 | [`/config?healthy=1&pwd=$pwd`](/config?healthy=1&pwd=$pwd) | 接口地址固定写 `http://127.0.0.1:端口`，给跑服务这台机器自己用 |
+| 本地配置接口-动态外网/局域网 | [`/config/1?healthy=1&pwd=$pwd`](/config/1?healthy=1&pwd=$pwd) | 接口地址跟随你访问时用的域名/IP，换地址不用重新生成 |
+| 其他配置接口-订阅过滤 | [订阅过滤说明](/docs/sub.md) | 按分类/关键词过滤订阅内容 |
+
+- **动态本地**：生成的 `api` 字段是 `http://127.0.0.1:<PORT>`，只对服务所在机器有效。
+- **动态外网/局域网**：生成的 `api` 字段取你访问时用的 `协议://域名`，所以从手机或外网访问本页复制这条，地址才是对的那个；反代到 80/443 时尤其要用它。
+  - ⚠️ 它只取域名**不带端口**。如果你没走反代、直接用 `http://ip:5757` 访问，这条生成的地址会丢掉 `:5757`，此时请用上一条。
+- 两条都支持附加参数：`sub=`（订阅码）、`healthy=1`（生成前做源健康检查，慢但可用率高）。
+- 详细参数见 [接口文档](/docs/apidoc.md) 与 [订阅过滤说明](/docs/sub.md)。
+
+---
+
 ## 快速开始
 
 ```bash
@@ -22,7 +40,7 @@ npm run dev        # 或 npm run pm2 常驻
 | 变量 | 说明 |
 | --- | --- |
 | `API_AUTH_NAME` / `API_AUTH_CODE` | 管理面 Basic 认证凭据 |
-| `API_PWD` | 业务 API 的 `pwd` 参数 |
+| `API_PWD` | 业务 API 的 `pwd` 参数，也就是上面配置接口里的 `pwd` |
 | `ADMIN_SESSION_SECRET` | 管理会话 cookie 的 HMAC 密钥，不配则每次重启随机 |
 | `COOKIE_SECURE=1` | HTTPS 部署时开启 |
 | `CORS_ALLOWED_ORIGINS` | 跨域白名单，不配则拒绝跨域 |
@@ -31,7 +49,45 @@ npm run dev        # 或 npm run pm2 常驻
 
 ---
 
-## 接口速查
+## 插件应用
+
+- [Admin 管理面板](/apps/admin)
+- [DrPlayer](/apps/drplayer)
+- [Websocket 实时日志](/apps/websocket)
+- [cookie 管理插件](/apps/cookie-butler/index.html)
+- [cron 表达式插件](/apps/cron-generator/index.html)
+- [剪切板智能推送](/apps/clipboard-pusher/index.html)
+- [DS 源可用性检测](/apps/source-checker/index.html)
+- [DS 解析检测](/apps/vip-parser/index.html)
+- [DS 源配置编辑](/apps/source-editor/index.html)
+- [DS 内存图片管理](/apps/image-manager/index.html)
+- [DS 时钟插件](/apps/clock/white_clock.html) | [日历时钟](/apps/clock/index.html)
+- [bookReader](/apps/book-reader)
+- [系统备份与恢复](/apps/backup-restore/index.html)
+- [代码加解密工具](/admin/encoder)
+- [在线猫 ds 源主页](/cat/index.html)
+
+---
+
+## 文档索引
+
+| 文档 | 文档 |
+| --- | --- |
+| [接口文档](/docs/apidoc.md) | [接口列表](/docs/apiList.md) |
+| [管理接口](/docs/admin_api.md) | [环境变量说明](/docs/envdoc.md) |
+| [订阅过滤](/docs/sub.md) | [关姐算法搭建说明](/docs/suanfa.md) |
+| [drpyS 源属性说明](/docs/ruleAttr.md) | [drpy2 写源简述](/docs/ruleDesc.md) |
+| [猫源调试教程](/docs/catDebug.md) | [接口压测教程](/docs/httpTest.md) |
+| [webdav 使用教程](/docs/webdav.md) | [puppeteer 使用教程](/docs/pupInstall.md) |
+| [python 环境](/docs/pyenv.md) | [crypto-js-wasm](/docs/crypto-js-wasm/readme-CN.md) |
+| [代码质量评估工具](/docs/codeCheck.md) | [代码评估报告](/docs/codeCheckReport.md) |
+| [重要问题记录](/docs/issue.md) | [更新记录](/docs/updateRecord.md) |
+
+---
+
+## 接口参考（开发者）
+
+以下为服务端注册的全部路由，供二次开发与排查使用，日常使用不需要关心。
 
 ### 业务接口
 
@@ -85,42 +141,6 @@ npm run dev        # 或 npm run pm2 常驻
 | `/api/admin/*` | 管理接口，需 Basic 认证 |
 
 完整接口文档：[接口文档](/docs/apidoc.md)、[接口列表](/docs/apiList.md)、[管理接口](/docs/admin_api.md)。
-
----
-
-## 插件应用
-
-- [Admin 管理面板](/apps/admin)
-- [DrPlayer](/apps/drplayer)
-- [Websocket 实时日志](/apps/websocket)
-- [cookie 管理插件](/apps/cookie-butler/index.html)
-- [cron 表达式插件](/apps/cron-generator/index.html)
-- [剪切板智能推送](/apps/clipboard-pusher/index.html)
-- [DS 源可用性检测](/apps/source-checker/index.html)
-- [DS 解析检测](/apps/vip-parser/index.html)
-- [DS 源配置编辑](/apps/source-editor/index.html)
-- [DS 内存图片管理](/apps/image-manager/index.html)
-- [DS 时钟插件](/apps/clock/white_clock.html) | [日历时钟](/apps/clock/index.html)
-- [bookReader](/apps/book-reader)
-- [系统备份与恢复](/apps/backup-restore/index.html)
-- [代码加解密工具](/admin/encoder)
-- [在线猫 ds 源主页](/cat/index.html)
-
----
-
-## 文档索引
-
-| 文档 | 文档 |
-| --- | --- |
-| [接口文档](/docs/apidoc.md) | [接口列表](/docs/apiList.md) |
-| [管理接口](/docs/admin_api.md) | [环境变量说明](/docs/envdoc.md) |
-| [drpyS 源属性说明](/docs/ruleAttr.md) | [drpy2 写源简述](/docs/ruleDesc.md) |
-| [其他配置接口-订阅过滤](/docs/sub.md) | [关姐算法搭建说明](/docs/suanfa.md) |
-| [猫源调试教程](/docs/catDebug.md) | [接口压测教程](/docs/httpTest.md) |
-| [webdav 使用教程](/docs/webdav.md) | [puppeteer 使用教程](/docs/pupInstall.md) |
-| [python 环境](/docs/pyenv.md) | [crypto-js-wasm](/docs/crypto-js-wasm/readme-CN.md) |
-| [代码质量评估工具](/docs/codeCheck.md) | [代码评估报告](/docs/codeCheckReport.md) |
-| [重要问题记录](/docs/issue.md) | [更新记录](/docs/updateRecord.md) |
 
 ---
 
