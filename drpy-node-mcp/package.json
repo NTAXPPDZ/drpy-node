@@ -1,6 +1,6 @@
 {
   "name": "drpy-node-mcp",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "MCP server for drpy-node",
   "main": "index.js",
   "type": "module",
@@ -20,20 +20,17 @@
     "node": ">=18"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.0.1",
-    "@rollup/plugin-commonjs": "^25.0.7",
-    "@rollup/plugin-json": "^6.1.0",
-    "@rollup/plugin-node-resolve": "^15.2.3",
-    "fs-extra": "^11.2.0",
-    "node-sqlite3-wasm": "^0.8.53",
-    "zod": "^3.23.8",
-    "zod-to-json-schema": "^3.25.1"
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "fs-extra": "^11.4.1",
+    "node-sqlite3-wasm": "^0.8.61",
+    "zod": "^3.25.76",
+    "zod-to-json-schema": "^3.25.2"
   },
   "devDependencies": {
     "@anthropic-ai/mcpb": "^2.1.2",
-    "@rollup/plugin-commonjs": "^29.0.2",
+    "@rollup/plugin-commonjs": "^29.0.3",
     "@rollup/plugin-json": "^6.1.0",
     "@rollup/plugin-node-resolve": "^16.0.3",
-    "rollup": "^4.59.0"
+    "rollup": "^4.68.7"
   }
 }

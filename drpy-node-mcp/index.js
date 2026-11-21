@@ -17,7 +17,7 @@ import * as apiTools from "./tools/apiTools.js";
 const server = new Server(
   {
     name: "drpy-node-mcp",
-    version: "1.0.0",
+    version: "1.0.1",
   },
   {
     capabilities: {
@@ -150,7 +150,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             url: z.string().describe("URL to fetch"),
             options: z.object({
               method: z.string().optional().describe("HTTP method (GET, POST, etc.)"),
-              headers: z.record(z.string()).optional().describe("HTTP headers (User-Agent, Cookie, Referer, etc.)"),
+              headers: z.record(z.string(), z.string()).optional().describe("HTTP headers (User-Agent, Cookie, Referer, etc.)"),
               data: z.any().optional().describe("Request body for POST/PUT"),
             }).optional().describe("Request options"),
           })
@@ -168,7 +168,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             baseUrl: z.string().optional().describe("Base URL for resolving relative links"),
             options: z.object({
               method: z.string().optional(),
-              headers: z.record(z.string()).optional(),
+              headers: z.record(z.string(), z.string()).optional(),
               data: z.any().optional(),
             }).optional().describe("Request options for URL fetch"),
           })
