@@ -960,8 +960,17 @@ export default (fastify, options, done) => {
             // 判断是否为外部访问（非本地访问）
             let not_local = cfg_path.startsWith('/1') || cfg_path.startsWith('/index');
             // 根据访问类型生成对应的主机地址
-            let requestHost = not_local ? `${protocol}://${hostname}` : `http://127.0.0.1:${options.PORT}`; // 动态生成根地址
-            let requestUrl = not_local ? `${protocol}://${hostname}${request.url}` : `http://127.0.0.1:${options.PORT}${request.url}`; // 动态生成请求链接
+            const forwardedHost = request.headers['x-forwarded-host'];
+            const forwardedPort = request.headers['x-forwarded-port'];
+            let hostWithPort = String(forwardedHost || request.headers.host || hostname);
+            if (forwardedPort && !/:\d+$/.test(hostWithPort)) {
+                hostWithPort = `${hostWithPort}:${forwardedPort}`;
+            } else if (!/:\d+$/.test(hostWithPort) && ![80, 443].includes(port)) {
+                const bareHost = hostname.includes(':') && !hostname.startsWith('[') ? `[${hostname}]` : hostname;
+                hostWithPort = `${bareHost}:${port}`;
+            }
+            let requestHost = not_local ? `${protocol}://${hostWithPort}` : `http://127.0.0.1:${options.PORT}`; // 动态生成根地址
+            let requestUrl = not_local ? `${protocol}://${hostWithPort}${request.url}` : `http://127.0.0.1:${options.PORT}${request.url}`; // 动态生成请求链接
             // _log.info('requestUrl:', requestUrl);
             // if (cfg_path.endsWith('.js')) {
             //     if (cfg_path.includes('index.js')) {

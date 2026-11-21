@@ -451,13 +451,14 @@ Fastify、`@fastify/static`、`@fastify/websocket`、`@fastify/formbody`、axios
 
 ### 本分支版本
 
-当前版本 **V1.6.0**（2026-11-21）。
+当前版本 **V1.7.0**（2026-11-21）。
 
 主版本号规则与上游保持一致（`V主.次.修订`），`package.json` 里的 `version` 字段与本节同步，后台管理「系统信息」读取的就是这个值。
 
 | 版本 | 内容 |
 | --- | --- |
-| **V1.6.0** | 依赖全面升级：安全修复（axios / form-data / qs / node-forge / undici）、日志链（pino 10 / rotating-file-stream 4 / dotenv 18）、网络链（https-proxy-agent 9 / basic-ftp 6）、缓存解析（lru-cache 11 / cheerio 1.2 / mime-types 3 / iconv-lite 0.7 / google-protobuf 4）、其余（lodash / sync-fetch / nodemailer 10 / p-queue 10）；移除未使用的 marked 与 import。 |
+| **V1.7.0** | 影视源大更新：星辰影院[优] 按新版详情模板重写二级/搜索/lazy（`.anthology-*` 线路与剧集、`http下载` mp4 线路、`page=` 搜索分页）；腾云驾雾[官] 列表与搜索切换到腾讯新版 `getPage` / `MbSearchHttp` 接口（`filter_value` 筛选、`page_context` 翻页、dataType=2 专辑过滤、`FillUnionInfo` 兜底）；修正反向代理下 `x-forwarded-host` 与 undici fetch 导入；新增 51吃瓜源，清理 12 个失效源。 |
+| V1.6.0 | 依赖全面升级：安全修复（axios / form-data / qs / node-forge / undici）、日志链（pino 10 / rotating-file-stream 4 / dotenv 18）、网络链（https-proxy-agent 9 / basic-ftp 6）、缓存解析（lru-cache 11 / cheerio 1.2 / mime-types 3 / iconv-lite 0.7 / google-protobuf 4）、其余（lodash / sync-fetch / nodemailer 10 / p-queue 10）；移除未使用的 marked 与 import。 |
 | V1.5.1 | 修正五个代理健康检查端点的 500（`createHealthResponse` 参数错位）；修复 CI 在 Node 20 上的测试失败、Docker 镜像构建与 Release 附件上传；拆分运行时首页为 `docs/home.md`。 |
 | V1.5.0 | Fastify 4 → 5 全量升级（含 `@fastify/static` / `@fastify/websocket` / `@fastify/formbody` 配套主版本）；安全止血、运行时重构、结构治理、测试与 CI 体系；74 条业务回归与 v4 逐条对比一致。 |
 | V1.4.3 | 上游基线版本（2026-03-22），本分支的起点。 |

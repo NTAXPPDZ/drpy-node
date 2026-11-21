@@ -6,7 +6,7 @@ import FormData from 'form-data';
 import https from "https";
 import diagnosticsChannel from 'diagnostics_channel';
 import {resolveDoh, getSystemProxy} from '../utils/dns_doh.js';
-import {ProxyAgent, Agent} from 'undici';
+import {fetch as undiciFetch, ProxyAgent, Agent} from 'undici';
 
 let undiciStripUASubscribed = false;
 
@@ -234,7 +234,7 @@ class FetchAxios {
                 fetchOptions.dispatcher = fetchDispatcher;
             }
             // 发送HTTP请求
-            let response = await fetch(finalConfig.url, fetchOptions);
+            let response = await undiciFetch(finalConfig.url, fetchOptions);
 
             // 处理手动重定向（当 maxRedirects 为 0 时）
             if (finalConfig.maxRedirects === 0 && response.status >= 300 && response.status < 400) {

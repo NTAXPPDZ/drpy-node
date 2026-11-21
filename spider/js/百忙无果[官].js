@@ -11,9 +11,9 @@
 const {getHtml} = $.require('./_lib.request.js')
 var rule = {
     title: '百忙无果[官]',
-    host: 'https://pianku.api.%6d%67%74%76.com',
+    host: 'https://pianku.api.mgtv.com',
     homeUrl: '',
-    searchUrl: 'https://mobileso.bz.%6d%67%74%76.com/msite/search/v2?q=**&pn=fypage&pc=10',
+    searchUrl: 'https://mobileso.bz.mgtv.com/msite/search/v2?q=**&pn=fypage&pc=10',
     detailUrl: 'https://pcweb.api.mgtv.com/episode/list?page=1&size=50&video_id=fyid',
     searchable: 2,
     quickSearch: 0,

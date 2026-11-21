@@ -186,7 +186,7 @@ export default (fastify, options, done) => {
 
             // 构建请求相关的URL信息
             const protocol = request.headers['x-forwarded-proto'] || (request.socket.encrypted ? 'https' : 'http');
-            const hostname = request.hostname;
+            const hostname = request.headers.host || request.hostname;
             const wsName = hostname.replace(`:${options.PORT}`, `:${options.WsPORT}`);
             const requestHost = `${protocol}://${hostname}`;
             const publicUrl = `${protocol}://${hostname}/public/`;
@@ -479,7 +479,7 @@ export default (fastify, options, done) => {
 
         // 构建请求相关的URL信息
         const protocol = request.headers['x-forwarded-proto'] || (request.socket.encrypted ? 'https' : 'http');
-        const hostname = request.hostname;
+        const hostname = request.headers.host || request.hostname;
         const wsName = hostname.replace(`:${options.PORT}`, `:${options.WsPORT}`);
         const requestHost = `${protocol}://${hostname}`;
         const publicUrl = `${protocol}://${hostname}/public/`;
@@ -631,7 +631,7 @@ export default (fastify, options, done) => {
 
         // 构建请求相关的URL信息
         const protocol = request.headers['x-forwarded-proto'] || (request.socket.encrypted ? 'https' : 'http');
-        const hostname = request.hostname;
+        const hostname = request.headers.host || request.hostname;
         const wsName = hostname.replace(`:${options.PORT}`, `:${options.WsPORT}`);
         const requestHost = `${protocol}://${hostname}`;
         const publicUrl = `${protocol}://${hostname}/public/`;

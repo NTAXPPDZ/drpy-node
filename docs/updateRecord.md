@@ -2,6 +2,24 @@
 
 ### 20261121
 
+更新至V1.7.0
+
+1. 星辰影院[优]：站点详情页改版为 MacCMS shoutu46 模板，旧 `.h2` / `.hl-dc-content` / `.hl-plays-list` / `.hl-plays-from` 全部失效。二级改为按新模板重写——标题 `.slide-info-title`、海报 `.detail-pic img[data-src]`、备注 `.slide-info-remarks`、简介 `#height_limit`、年份与地区取 `.slide-info` 内 `/s/year/` 与 `/s/<地区>` 链接、导演/演员/类型按 `<strong>` 标签块提取。
+2. 星辰影院[优] 播放列表：线路名取 `.anthology-tab a.swiper-slide`（剥掉 `<span class="badge">` 集数角标），剧集取各 `.anthology-list-box` 内的 `.anthology-list-play li a`，按 DOM 索引与线路一一配对（URL 里的线路数字是乱序的，不能反推）；单引号写法的 `http下载` 框走 `.anthology-list-dow .download-li a.left` 取 mp4 直链，作为独立线路输出。
+3. 星辰影院[优] 搜索：旧 `.hl-one-list li` 已不存在，改为按 `.public-list-box` 正则切块，取 `.thumb-txt` / `data-src` / `.public-list-prb` / `.thumb-blurb`；分页参数由无效的 `pg=` 改为 `page=`（`searchUrl` 同步改为 `/s.html?wd=**&page=fypage`）。
+4. 星辰影院[优] lazy：改用 `request` 替代 `req`，正则放宽为 `player_[A-Za-z0-9_]*\s*=\s*({...})` 以兼容 `</script>` 结尾无分号与变量名变化，保留 `encrypt` 分支，直链判定同时接受 m3u8 与 mp4。
+5. 腾云驾雾[官] 列表：旧 `/x/bu/pagesheet/list` 已被腾讯下线（stgw 404），改用 `POST pbaccess.video.qq.com/trpc.vector_layout.page_view.PageService/getPage`，`page_id` 映射 choice=100101 / movie=100173 / tv=100113 / variety=100109 / cartoon=100119 / child=100150 / doco=100105；从 `data.CardList[*].children_list.list.cards` 提取 `pc_video` / `pc_shelves` / `pc_carousel`，按 cid 去重，详情地址统一输出 `float_vinfo2?cid=<cid>`。
+6. 腾云驾雾[官] 筛选：`page_params` 里直接塞 `itype` / `iyear` / `sort` 会被服务端忽略，必须拼成 `page_params.filter_value="itype=15&sort=75"` 才生效。
+7. 腾云驾雾[官] 翻页：服务端不认 `page_index` 递推，必须回传上一页的 `data.page_context`；目标页缺上下文时从前面顺推（最多回退 5 页）补齐，避免深翻页取到重复数据。
+8. 腾云驾雾[官] 搜索：旧 Smartbox 接口返回 `ret=35013`，改用 `POST pbaccess.video.qq.com/trpc.videosearch.mobile_search.HttpMobileRecall/MbSearchHttp`（`pagenum=pg-1`、`pagesize=30`），只取 `doc.dataType===2` 的影视专辑，并合并 `normalList.itemList` 与 `areaBoxList[*].itemList` 按 cid 去重。请求头 `Referer` / `Origin` 必须是明文 `v.qq.com`，写成百分号编码会让接口只回 UGC 短视频。
+9. 腾云驾雾[官] 搜索分页：第 2 页起返回的全是 UGC 短视频，无法进入 `float_vinfo2`，在搜索函数内直接短路返回空（不用 `searchNoPage`，框架该分支返回字符串 `'{}'` 会触发 `Cannot create property 'method' on string`）。
+10. 腾云驾雾[官] 二级兜底：`float_vinfo2` 的 `video_ids` 可能为 `null`（如《狂飙》），原代码直接取 `.length` 会抛错；改为 `|| []`，为空时补一次 `FillUnionInfo` 取 `cover_infos[cid].video_ids`，仍为空则输出一条可打开的 cover 入口。`typ` / `nam` 可能是嵌套数组，`join` 前加 `|| []`。
+11. 配置与接口修正：`controllers/api.js` 三处 `request.hostname` 改为 `request.headers.host || request.hostname`，避免反向代理下生成错误的回源地址；`controllers/config.js` 增加 `x-forwarded-host` / `x-forwarded-port` 处理；`libs_drpy/fetchAxios.js` 显式导入 undici 的 `fetch`，避免与全局 fetch 混用导致 dispatcher 失效。
+12. 源维护：新增 `spider/js/51吃瓜.js`；移除 12 个失效源（嗷呜动漫、番茄漫画、NT动漫、二小、人人影视、卫星影视、永乐视频、泥视频、爱壹帆、盘Ta 等），原文件保留在 `spider/js_bad/`；`百忙无果[官]` 的域名去百分号编码还原为明文；`json/App模板配置.json` 清理失效模板，仅保留示例配置。
+13. 验证：`check:syntax` 244 文件 0 失败；`npm test` 107 用例全绿；两个源在本地 3499 端口实测分类、筛选、分页、详情、播放、搜索全部通过。
+
+### 20261121
+
 更新至V1.6.0
 
 1. 安全修复：axios 1.7.9 → 1.21.1（CVE-2025-27152 SSRF）、form-data 4.0.4 → 4.0.6（CVE-2025-7783）、qs 6.13.1 → 6.17.1、node-forge 1.3.1 → 1.4.3、undici 6.21.1 → 8.13.1（6.x 已 EOL）。
