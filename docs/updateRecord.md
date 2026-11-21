@@ -2,6 +2,18 @@
 
 ### 20261121
 
+更新至V1.6.0
+
+1. 安全修复：axios 1.7.9 → 1.21.1（CVE-2025-27152 SSRF）、form-data 4.0.4 → 4.0.6（CVE-2025-7783）、qs 6.13.1 → 6.17.1、node-forge 1.3.1 → 1.4.3、undici 6.21.1 → 8.13.1（6.x 已 EOL）。
+2. 日志链：pino 9.7.0 → 10.4.0、rotating-file-stream 3.2.6 → 4.0.0、dotenv 16.4.7 → 18.0.10。rotating-file-stream v4 的文件名生成器改为单参数签名（收到 null 或 {index, time}），旧双参写法会抛错并静默回退控制台导致文件日志失效，已在 controllers/fastlogger.js 按 v4 重写；dotenv v17+ 默认打印注入提示，已显式 quiet 保持原静默输出。
+3. 网络链：https-proxy-agent 7.0.6 → 9.1.0、basic-ftp 5.0.5 → 6.2.6。HttpsProxyAgent 构造签名与 Client 在用方法均不变。
+4. 缓存与解析：lru-cache 9.1.2 → 11.5.3、cheerio 1.0.0-rc.12 → 1.2.0、mime-types 2.1.35 → 3.0.2、iconv-lite 0.6.3 → 0.7.3、google-protobuf 3.21.4 → 4.0.3。
+5. 其余升级：lodash 4.17.21 → 4.18.1、sync-fetch 0.6.0-2 → 0.7.1、nodemailer 7.0.5 → 10.6.1、p-queue 8.0.1 → 10.0.0；另有一批小版本与安全补丁（ws、dayjs、fastq、cron、fs-extra、node-sqlite3-wasm、rolldown 等）。
+6. 移除未使用依赖：marked（两个文件的 import 已注释）、import@0.0.6（全仓无引用）。
+7. 验证：check:syntax 220 文件 0 失败；npm test 107 用例全绿；regression-fastify5.mjs 74 条 5xx/ERR 0。
+
+### 20261121
+
 更新至V1.5.1
 
 1. 修正 /m3u8-proxy/health、/ftp/health、/webdav/health、/file-proxy/health、/unified-proxy/health 五个健康检查端点因 createHealthResponse 参数错位导致的 500。
