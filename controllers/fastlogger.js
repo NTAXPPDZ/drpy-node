@@ -65,7 +65,8 @@ function initializeFastify() {
         return globalThis[FASTIFY_INSTANCE_KEY];
     }
 
-    dotenv.config({path: process.env.DOTENV_CONFIG_PATH || undefined});
+    // dotenv v17 起默认打印注入提示，这里显式静默，保持原有输出
+    dotenv.config({path: process.env.DOTENV_CONFIG_PATH || undefined, quiet: true});
 
     const LOG_WITH_FILE = Number(process.env.LOG_WITH_FILE) || 0;
     const LOG_LEVEL = process.env.LOG_LEVEL && ['trace', 'debug', 'info', 'warn', 'error', 'fatal'].includes(process.env.LOG_LEVEL) ? process.env.LOG_LEVEL : 'info';
@@ -81,10 +82,12 @@ function initializeFastify() {
     };
 
     // 安全的文件路径生成函数
-    const safeFileNameGenerator = (time, index) => {
-        if (!time) return "output.log";
+    // rotating-file-stream v4：生成器只接受一个参数，收到 null 或 { index, time }
+    const safeFileNameGenerator = (args) => {
+        if (!args) return "output.log";
+        const {index, time} = args;
         const dateStr = `${time.getFullYear()}-${String(time.getMonth() + 1).padStart(2, '0')}-${String(time.getDate()).padStart(2, '0')}`;
-        return `output-${dateStr}.log.${index || 1}`;
+        return index ? `output-${dateStr}.log.${index}` : `output-${dateStr}.log`;
     };
 
     if (LOG_WITH_FILE) {
