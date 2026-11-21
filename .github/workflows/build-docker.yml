@@ -14,6 +14,9 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # QEMU 模拟 arm64 编译原生模块时偶发崩溃且不退出，卡满 6 小时默认上限；
+    # 这里设 30 分钟硬上限，卡住会直接失败并暴露出来，而不是白等到 360 分钟。
+    timeout-minutes: 30
     permissions:
       contents: read
       packages: write
