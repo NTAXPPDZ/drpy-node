@@ -110,6 +110,10 @@ export default async function adminController(fastify, options) {
     fastify.post('/api/admin/sources/syntax', sourcesController.checkSyntax);
     fastify.get('/api/admin/sources/template', sourcesController.getTemplate);
     fastify.get('/api/admin/sources/libs', sourcesController.getLibsInfo);
+    fastify.post('/api/admin/sources/create', sourcesController.createSource);
+    fastify.delete('/api/admin/sources/delete', sourcesController.deleteSource);
+    // 部分代理/客户端对 DELETE 支持不佳，额外开放 POST 别名
+    fastify.post('/api/admin/sources/delete', sourcesController.deleteSource);
 
     // ==================== 文件管理 API ====================
     fastify.get('/api/admin/files/list', filesController.listDirectory);

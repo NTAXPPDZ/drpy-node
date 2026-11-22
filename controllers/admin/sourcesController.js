@@ -4,7 +4,9 @@
  */
 
 import fs from '../../utils/fsWrapper.js';
-import {listKindSources} from '../../utils/sources/sourceIndex.js';
+import {listKindSources, SOURCE_KINDS, invalidateSourceIndex} from '../../utils/sources/sourceIndex.js';
+import {resolveInside} from '../../utils/security/pathGuard.js';
+import {ApiError, ErrorCodes, sendError} from '../../utils/runtime/errors.js';
 import path from 'path';
 import vm from 'vm';
 import { execFile } from 'child_process';
@@ -230,7 +232,16 @@ export async function checkSyntax(req, reply) {
 
 // 获取模板
 export async function getTemplate(req, reply) {
-    const template = `/*
+    return reply.send({ template: renderJsTemplate() });
+}
+
+/**
+ * 渲染 JS / CatVod 源的默认模板
+ * @param {string} title 源标题
+ * @returns {string}
+ */
+function renderJsTemplate(title = 'Site Name') {
+    return `/*
 * @File     : drpy-node spider template
 * @Author   : user
 * @Date     : ${new Date().toISOString().split('T')[0]}
@@ -241,7 +252,7 @@ var rule = {
     // 影视|漫画|小说
     类型: '影视',
     // 源标题
-    title: 'Site Name',
+    title: '${title}',
     // 源主域名
     host: 'https://example.com',
     // 源主页链接
@@ -288,9 +299,7 @@ var rule = {
     },
     // 搜索
     搜索: '.search-result .item;a&&title;img&&src;.remarks&&Text;a&&href',
-}`;
-
-    return reply.send({ template });
+}`
 }
 
 export async function getLibsInfo(req, reply) {
@@ -316,6 +325,253 @@ export async function getLibsInfo(req, reply) {
         ]
     };
     return reply.send(info);
+}
+
+// ==================== 源创建 / 删除 ====================
+
+const KIND_ALIAS = Object.freeze({
+    js: 'js',
+    javascript: 'js',
+    catvod: 'catvod',
+    cat: 'catvod',
+    php: 'php',
+    py: 'py',
+    hipy: 'py',
+    python: 'py',
+});
+
+// Windows 非法文件名字符（与 utils/security/pathGuard.js 保持一致）
+const INVALID_NAME_CHARS = /[<>:"|?*\u0000-\u001f]/;
+
+/**
+ * 归一化源类型
+ * @param {string} type
+ * @returns {string} js | catvod | php | py
+ */
+function resolveKind(type) {
+    const key = String(type || '').trim().toLowerCase();
+    const kind = KIND_ALIAS[key];
+    if (!kind) {
+        throw ApiError.badRequest(`不支持的源类型: ${type}`);
+    }
+    return kind;
+}
+
+/**
+ * 归一化源文件名（自动补扩展名，拦截非法字符）
+ * @param {string} rawName
+ * @param {string} kind
+ * @returns {string} 带扩展名的文件名
+ */
+function normalizeSourceName(rawName, kind) {
+    const spec = SOURCE_KINDS[kind];
+    let name = String(rawName || '').trim();
+    if (!name) {
+        throw ApiError.badRequest('源名称不能为空');
+    }
+    if (name.toLowerCase().endsWith(spec.ext)) {
+        name = name.slice(0, -spec.ext.length).trim();
+    }
+    if (!name) {
+        throw ApiError.badRequest('源名称不能为空');
+    }
+    if (name.length > 100) {
+        throw ApiError.badRequest('源名称过长（最多 100 个字符）');
+    }
+    if (name.includes('/') || name.includes('\\')) {
+        throw ApiError.badRequest('源名称不能包含路径分隔符');
+    }
+    if (name.includes('..')) {
+        throw ApiError.badRequest('源名称不能包含 ..');
+    }
+    if (INVALID_NAME_CHARS.test(name)) {
+        throw ApiError.badRequest('源名称包含非法字符');
+    }
+    if (name.startsWith('_')) {
+        throw ApiError.badRequest('源名称不能以下划线开头（_ 前缀文件不参与源索引）');
+    }
+    if (name.startsWith('.')) {
+        throw ApiError.badRequest('源名称不能以点开头');
+    }
+    return name + spec.ext;
+}
+
+/**
+ * 校验相对路径是否位于某个源目录下
+ * @param {string} input 形如 spider/js/xxx.js
+ * @returns {{kind: string, dir: string, relPath: string}}
+ */
+function resolveSourceRelativePath(input) {
+    const raw = String(input || '').trim();
+    if (!raw) {
+        throw ApiError.badRequest('缺少源文件路径');
+    }
+    const normalized = raw.replace(/\\/g, '/').replace(/^\.\//, '');
+    for (const kind of Object.keys(SOURCE_KINDS)) {
+        const spec = SOURCE_KINDS[kind];
+        const prefix = `${spec.dir}/`;
+        if (normalized.startsWith(prefix)) {
+            const rest = normalized.slice(prefix.length);
+            if (!rest || rest.includes('/')) {
+                throw ApiError.badRequest('源文件路径必须位于源目录内');
+            }
+            return { kind, dir: spec.dir, relPath: prefix + rest };
+        }
+    }
+    const dirs = Object.values(SOURCE_KINDS).map((spec) => spec.dir).join(' / ');
+    throw ApiError.badRequest(`源文件必须位于 ${dirs} 目录下`);
+}
+
+/**
+ * 生成新源的默认内容
+ * @param {string} kind
+ * @param {string} title 源标题（不含扩展名）
+ * @returns {string}
+ */
+function buildDefaultSourceContent(kind, title) {
+    if (kind === 'py') {
+        return `"""
+@header({
+  searchable: 1,
+  filterable: 1,
+  quickSearch: 1,
+  title: '${title}',
+  lang: 'hipy'
+})
+"""
+
+# -*- coding: utf-8 -*-
+import sys
+
+sys.path.append('..')
+from base.spider import Spider
+
+
+class Spider(Spider):
+
+    def init(self, extend=""):
+        pass
+
+    def getName(self):
+        return '${title}'
+
+    def isVideoFormat(self, url):
+        pass
+
+    def manualVideoCheck(self):
+        pass
+
+    def destroy(self):
+        pass
+
+    host = 'https://example.com'
+
+    headers = {
+        'User-Agent': 'MOBILE_UA',
+    }
+`;
+    }
+    if (kind === 'php') {
+        return `<?php
+require_once __DIR__ . '/lib/spider.php';
+
+class Spider extends BaseSpider {
+
+    public function getName() {
+        return '${title}';
+    }
+
+    public function init($extend = "") {
+        // TODO: 在此初始化爬虫
+    }
+
+    public function isVideoFormat($url) {
+        return false;
+    }
+
+    public function manualVideoCheck() {
+        return false;
+    }
+}
+`;
+    }
+    return renderJsTemplate(title);
+}
+
+/**
+ * 新增源文件
+ * POST /api/admin/sources/create  { name, type, content? }
+ */
+export async function createSource(req, reply) {
+    try {
+        const body = req.body || {};
+        const kind = resolveKind(body.type);
+        const spec = SOURCE_KINDS[kind];
+        const fileName = normalizeSourceName(body.name, kind);
+        const relPath = `${spec.dir}/${fileName}`;
+        const fullPath = resolveInside(PROJECT_ROOT, relPath, { allowRoot: true });
+
+        if (await fs.pathExists(fullPath)) {
+            throw new ApiError(ErrorCodes.CONFLICT, `源文件已存在: ${relPath}`, 409);
+        }
+
+        await fs.ensureDir(path.dirname(fullPath));
+        const title = path.basename(fileName, spec.ext);
+        const content = (typeof body.content === 'string' && body.content.trim())
+            ? body.content
+            : buildDefaultSourceContent(kind, title);
+        await fs.writeFile(fullPath, content, 'utf-8');
+        invalidateSourceIndex(path.join(PROJECT_ROOT, spec.dir));
+
+        return reply.send({
+            success: true,
+            message: '源创建成功',
+            path: relPath,
+            name: fileName,
+            type: kind,
+        });
+    } catch (e) {
+        return sendError(reply, e);
+    }
+}
+
+/**
+ * 删除源文件
+ * DELETE /api/admin/sources/delete  ?path=spider/js/xxx.js
+ * 也支持 body: { name, type }
+ */
+export async function deleteSource(req, reply) {
+    try {
+        const body = req.body || {};
+        const query = req.query || {};
+        let input = body.path || query.path || '';
+        if (!input && body.name) {
+            const kind = resolveKind(body.type);
+            input = `${SOURCE_KINDS[kind].dir}/${normalizeSourceName(body.name, kind)}`;
+        }
+        const { kind, dir, relPath } = resolveSourceRelativePath(input);
+        const fullPath = resolveInside(PROJECT_ROOT, relPath, { allowRoot: true });
+
+        if (!await fs.pathExists(fullPath)) {
+            throw new ApiError(ErrorCodes.NOT_FOUND, `源文件不存在: ${relPath}`, 404);
+        }
+        const stat = await fs.stat(fullPath);
+        if (!stat.isFile()) {
+            throw ApiError.badRequest('只能删除源文件，不能删除目录');
+        }
+
+        await fs.remove(fullPath);
+        invalidateSourceIndex(path.join(PROJECT_ROOT, dir));
+
+        return reply.send({
+            success: true,
+            message: '源删除成功',
+            path: relPath,
+            type: kind,
+        });
+    } catch (e) {
+        return sendError(reply, e);
+    }
 }
 
 function isSafePath(filePath) {

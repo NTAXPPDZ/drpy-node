@@ -56,6 +56,14 @@ export const adminApi = {
         return client.get('/api/admin/sources/libs');
     },
 
+    async createSource({ name, type, content }) {
+        return client.post('/api/admin/sources/create', { name, type, content });
+    },
+
+    async deleteSource(path) {
+        return client.delete('/api/admin/sources/delete', { params: { path } });
+    },
+
     // ==================== 文件管理 ====================
     async listDirectory(path) {
         return client.get('/api/admin/files/list', { params: { path } });
