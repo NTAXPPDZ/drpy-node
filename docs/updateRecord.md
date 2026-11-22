@@ -2,6 +2,18 @@
 
 ### 20261122
 
+更新至V1.8.1
+
+1. 新增 `91porn` 源（`spider/js/91porn.js`）：视频 / 蝌蚪 / 精品三板块（`/video`、`/videos`、`/vod`），列表按 `colVideoList` 切块，再用详情路径白名单（`/video/view|viewhd/`、`/videos/view/`、`/vod/view/`）剔除站外广告卡；详情取 `<video id="video-play" data-src>`，补协议、还原 `&amp;` 后输出直链，`lazy` 返回 `parse:0`。
+2. 新增 海角情源（`spider/js/海角情.js`）：8 个分类，分页走 `/{tid}/page/N`（不带尾斜杠；`/{tid}/N` 无效，返回第一页）；列表按 `pt-cv-content-item` 切块，封面取懒加载的 `data-cvpsrc`（`src` 只是占位图）；正文取 `itemprop="text"`（Elementor 正文无 `<p>` 包裹）并按广告词表过滤，取不到回退 `meta[description]`；搜索兼容 `pt-cv` 列表卡与 astra 归档卡两套结构。
+3. 海角情播放为自研加密播放器（abyssplayer）：`core.bundle.js` 双重校验 `top.location != self.location` 与 `hostname == localhost || *.abyss.to || *.trycloudflare.com`，slug 只从 URL 路径正则取，且媒体 CDN（GCS 结算停用、`*.sssrr.org` CF 挑战）实测 403，故不做直链解析；输出「海角播放器」与「海角嗅探」两条线路，`lazy` 统一 `parse:1` 交客户端嗅探。
+4. `51吃瓜` 增加「标签云」入口（默认取前 60 个热门标签，可切 150 / 300 / 全部）；封面 CDN `pic.mmgbaa.cn` 返回的是 AES-128-CBC 密文而非图片，改用 `proxy_rule` 代理解密后直接吐真图；同步剔除「往期活动」分类。
+5. 新增 `黑料不打烊` 源（分类导航 + 本地筛选 + 广告词黑名单），更新 `黑料不打烊[阔]`。
+6. 版本号修正：`package.json` 与 `package-lock.json` 的 1.8.0 因文件长度相同（`1.7.0` 与 `1.8.0` 等宽）、mtime 未变被 git stat 缓存判定为未修改而漏进提交，镜像构建读到的版本一直是 1.7.0；本次补提交并升修订号至 1.8.1，GHCR 标签列表已出现 `1.8.1`。
+7. 验证：`npm run check:syntax` 237 文件 0 失败；`npm test` 114 用例全绿；两个新源在本地 3499 端口实测分类、分页、详情、搜索、播放全部通过；`ghcr.io/ntaxppdz/drpy-node:1.8.1` 与 `:latest` 构建成功。
+
+### 20261122
+
 更新至V1.8.0
 
 1. 源管理新增源：后台「源管理」页（`/apps/admin/sources`）增加「新增源」按钮与弹窗，可选 JS / CatVod / PHP / HIPY 四种类型，填写名称与初始内容（留空则按类型生成模板骨架）；后端新增 `POST /api/admin/sources/create`，自动补扩展名、落盘 `spider/<kind>/` 并调用 `invalidateSourceIndex` 失效源索引缓存。
