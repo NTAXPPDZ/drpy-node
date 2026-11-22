@@ -79,6 +79,90 @@ const editSource = (source) => {
     query: { path: source.path }
   })
 }
+
+// ==================== 新增 / 删除 ====================
+const SOURCE_TYPE_OPTIONS = [
+  { value: 'js', label: 'JS' },
+  { value: 'catvod', label: 'CatVod' },
+  { value: 'php', label: 'PHP' },
+  { value: 'py', label: 'HIPY' }
+]
+
+const showCreateModal = ref(false)
+const createName = ref('')
+const createType = ref('js')
+const createContent = ref('')
+const creating = ref(false)
+const deletingPath = ref(null)
+const pendingDelete = ref(null)
+const toast = ref(null)
+let toastTimer = null
+
+const showToast = (message, type = 'info') => {
+  toast.value = { message, type }
+  if (toastTimer) clearTimeout(toastTimer)
+  toastTimer = setTimeout(() => { toast.value = null }, 3000)
+}
+
+const openCreateModal = () => {
+  createName.value = ''
+  createType.value = 'js'
+  createContent.value = ''
+  showCreateModal.value = true
+}
+
+const closeCreateModal = () => {
+  if (creating.value) return
+  showCreateModal.value = false
+}
+
+const createSource = async () => {
+  const name = createName.value.trim()
+  if (!name) {
+    showToast('请输入源名称', 'error')
+    return
+  }
+  creating.value = true
+  try {
+    const result = await spiderApi.createSource({
+      name,
+      type: createType.value,
+      content: createContent.value
+    })
+    showToast(result?.message || '源创建成功', 'success')
+    showCreateModal.value = false
+    await systemStore.fetchSources()
+  } catch (e) {
+    showToast(e.message || '创建失败', 'error')
+  } finally {
+    creating.value = false
+  }
+}
+
+const askDelete = (source) => {
+  pendingDelete.value = source
+}
+
+const cancelDelete = () => {
+  if (deletingPath.value) return
+  pendingDelete.value = null
+}
+
+const deleteSource = async () => {
+  const source = pendingDelete.value
+  if (!source) return
+  deletingPath.value = source.path
+  try {
+    const result = await spiderApi.deleteSource(source.path)
+    showToast(result?.message || '源删除成功', 'success')
+    pendingDelete.value = null
+    await systemStore.fetchSources()
+  } catch (e) {
+    showToast(e.message || '删除失败', 'error')
+  } finally {
+    deletingPath.value = null
+  }
+}
 </script>
 
 <template>
@@ -93,6 +177,15 @@ const editSource = (source) => {
             管理和验证 drpy 源文件
           </p>
         </div>
+        <button
+          @click="openCreateModal"
+          class="btn btn-primary"
+        >
+          <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+          </svg>
+          新增源
+        </button>
         <button
           @click="systemStore.fetchSources()"
           :disabled="systemStore.loading"
@@ -254,11 +347,127 @@ const editSource = (source) => {
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                 </svg>
               </button>
+              <button
+                @click="askDelete(source)"
+                class="p-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors text-red-500 dark:text-red-400"
+                title="删除源"
+              >
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+              </button>
             </div>
           </div>
         </div>
       </div>
     </div>
+    </div>
+
+    <!-- 新增源弹窗 -->
+    <div
+      v-if="showCreateModal"
+      class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+      @click.self="closeCreateModal"
+    >
+      <div class="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-lg overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+          <h3 class="font-semibold">新增源</h3>
+          <button @click="closeCreateModal" class="p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <div class="p-6 space-y-4">
+          <div>
+            <label class="block text-sm font-medium mb-1">源名称</label>
+            <input
+              v-model="createName"
+              type="text"
+              placeholder="例如：我的源"
+              class="input w-full"
+            />
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              不含扩展名；保存目录由类型决定（JS/CatVod → spider/js、spider/catvod）
+            </p>
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium mb-1">源类型</label>
+            <select v-model="createType" class="input w-full">
+              <option
+                v-for="opt in SOURCE_TYPE_OPTIONS"
+                :key="opt.value"
+                :value="opt.value"
+              >
+                {{ opt.label }}
+              </option>
+            </select>
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium mb-1">初始内容（可选）</label>
+            <textarea
+              v-model="createContent"
+              rows="8"
+              class="input w-full font-mono text-xs"
+              placeholder="留空则按类型生成默认模板"
+            ></textarea>
+          </div>
+        </div>
+
+        <div class="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-2">
+          <button @click="closeCreateModal" class="btn btn-secondary" :disabled="creating">
+            取消
+          </button>
+          <button @click="createSource" class="btn btn-primary" :disabled="creating">
+            <svg v-if="creating" class="w-4 h-4 mr-2 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            创建
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 删除确认弹窗 -->
+    <div
+      v-if="pendingDelete"
+      class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+      @click.self="cancelDelete"
+    >
+      <div class="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-md p-6">
+        <h3 class="text-lg font-semibold">删除源</h3>
+        <p class="mt-2 text-sm text-gray-600 dark:text-gray-300">
+          确认删除 <span class="font-mono">{{ pendingDelete.path }}</span> ？
+          文件会从磁盘删除，操作不可撤销。
+        </p>
+        <div class="mt-6 flex justify-end gap-2">
+          <button @click="cancelDelete" class="btn btn-secondary" :disabled="!!deletingPath">
+            取消
+          </button>
+          <button @click="deleteSource" class="btn btn-danger" :disabled="!!deletingPath">
+            <svg v-if="deletingPath" class="w-4 h-4 mr-2 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            确认删除
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 轻提示 -->
+    <div
+      v-if="toast"
+      class="fixed bottom-6 right-6 z-[60] px-4 py-3 rounded-lg shadow-lg text-sm text-white"
+      :class="{
+        'bg-green-600': toast.type === 'success',
+        'bg-red-600': toast.type === 'error',
+        'bg-gray-800': toast.type !== 'success' && toast.type !== 'error'
+      }"
+    >
+      {{ toast.message }}
     </div>
   </div>
 </template>

@@ -36,6 +36,14 @@ export const spiderApi = {
         return result.template;
     },
 
+    async createSource({ name, type, content }) {
+        return adminApi.createSource({ name, type, content });
+    },
+
+    async deleteSource(path) {
+        return adminApi.deleteSource(path);
+    },
+
     async debugRule(params) {
         // 暂未实现
         return {

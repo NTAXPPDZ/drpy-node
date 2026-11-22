@@ -451,12 +451,13 @@ Fastify、`@fastify/static`、`@fastify/websocket`、`@fastify/formbody`、axios
 
 ### 本分支版本
 
-当前版本 **V1.7.0**（2026-11-21）。
+当前版本 **V1.8.0**（2026-11-22）。
 
 主版本号规则与上游保持一致（`V主.次.修订`），`package.json` 里的 `version` 字段与本节同步，后台管理「系统信息」读取的就是这个值。
 
 | 版本 | 内容 |
 | --- | --- |
+| **V1.8.0** | 源管理补齐「新增源」与「删除源」：后台 `/apps/admin/sources` 增加新增按钮与弹窗（名称 / 类型 JS·CatVod·PHP·HIPY / 初始内容）、每行删除按钮与二次确认；后端新增 `POST /api/admin/sources/create` 与 `DELETE /api/admin/sources/delete`（含 POST 别名），落盘 `spider/<kind>/` 并失效源索引缓存；源名拒绝 `..`、路径分隔符、Windows 非法字符、`_` 前缀与点开头，删除仅限 `spider/` 下文件；新增集成测试 7 例，`check:syntax` 0 失败、`npm test` 114 例全绿；前端产物已重建并提交到 `apps/admin/`。 |
 | **V1.7.0** | 影视源大更新：星辰影院[优] 按新版详情模板重写二级/搜索/lazy（`.anthology-*` 线路与剧集、`http下载` mp4 线路、`page=` 搜索分页）；腾云驾雾[官] 列表与搜索切换到腾讯新版 `getPage` / `MbSearchHttp` 接口（`filter_value` 筛选、`page_context` 翻页、dataType=2 专辑过滤、`FillUnionInfo` 兜底）；修正反向代理下 `x-forwarded-host` 与 undici fetch 导入；新增 51吃瓜源，清理 12 个失效源。 |
 | V1.6.0 | 依赖全面升级：安全修复（axios / form-data / qs / node-forge / undici）、日志链（pino 10 / rotating-file-stream 4 / dotenv 18）、网络链（https-proxy-agent 9 / basic-ftp 6）、缓存解析（lru-cache 11 / cheerio 1.2 / mime-types 3 / iconv-lite 0.7 / google-protobuf 4）、其余（lodash / sync-fetch / nodemailer 10 / p-queue 10）；移除未使用的 marked 与 import。 |
 | V1.5.1 | 修正五个代理健康检查端点的 500（`createHealthResponse` 参数错位）；修复 CI 在 Node 20 上的测试失败、Docker 镜像构建与 Release 附件上传；拆分运行时首页为 `docs/home.md`。 |

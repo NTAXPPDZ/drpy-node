@@ -1,5 +1,16 @@
 # drpyS更新记录
 
+### 20261122
+
+更新至V1.8.0
+
+1. 源管理新增源：后台「源管理」页（`/apps/admin/sources`）增加「新增源」按钮与弹窗，可选 JS / CatVod / PHP / HIPY 四种类型，填写名称与初始内容（留空则按类型生成模板骨架）；后端新增 `POST /api/admin/sources/create`，自动补扩展名、落盘 `spider/<kind>/` 并调用 `invalidateSourceIndex` 失效源索引缓存。
+2. 源管理删除源：列表每行增加删除按钮与二次确认弹窗；后端新增 `DELETE /api/admin/sources/delete`（同时提供 POST 别名），支持 `?path=` 与 body `{name,type}` 两种入参，仅允许删除 `spider/` 下的源文件，拒绝目录与越界路径，删除后同样失效源索引缓存。
+3. 校验与安全：源名拒绝 `..`、路径分隔符、Windows 非法字符、`_` 前缀与点开头，长度上限 100；写入路径统一走 `resolveInside()` 路径守卫；重名返回 409、目标不存在返回 404、参数非法返回 400，错误响应统一 `sendError`；只读模式下由全局能力守卫拦截写操作。
+4. 前端交互：新增与删除成功均有 toast 提示并自动刷新源列表；修复删除确认按钮 `disabled` 恒为真的问题（`deletingPath` 改为 `ref(null)`，取消按钮同步放开）。
+5. 测试与构建：新增 `tests/integration/sources.test.mjs` 7 例（未认证 401、新增落盘且列表可见、重名 409、非法名称 400、删除后文件消失且列表移除、删除不存在 404、越界路径 400）；`npm run check:syntax` 238 文件 0 失败；`npm test` 114 用例全绿；管理面板重新构建并提交 `apps/admin/` 产物。
+6. 部署提示：远端实例更新后需重启服务使新接口生效；`apps/admin/` 为构建产物，源码改动需在 `drpy-node-admin/` 执行 `npm run build:apps` 后一并提交。
+
 ### 20261121
 
 更新至V1.7.0
